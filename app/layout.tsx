@@ -5,6 +5,7 @@ import { GeistMono } from "geist/font/mono"
 import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "@/contexts/auth-context"
 import { ThemeProvider } from "next-themes"
+import { Toaster } from "@/components/ui/toaster"
 import { Suspense } from "react"
 import "./globals.css"
 
@@ -29,6 +30,7 @@ export default function RootLayout({
             </ThemeProvider>
           </Suspense>
         </AuthProvider>
+        <Toaster />
         <Analytics />
       </body>
     </html>

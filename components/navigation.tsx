@@ -14,6 +14,8 @@ import {
   Calendar,
   Home,
   LogOut,
+  Building2,
+  School,
 } from "lucide-react"
 
 interface NavigationProps {
@@ -30,6 +32,8 @@ export function Navigation({ activeSection, onSectionChange }: NavigationProps) 
         return [
           { id: "dashboard", label: "Tableau de Bord", icon: Home },
           { id: "users", label: "Gestion des Utilisateurs", icon: Users },
+          { id: "filieres", label: "Gestion des Filières", icon: Building2 },
+          { id: "classes", label: "Gestion des Classes", icon: School },
           { id: "subjects", label: "Gestion des Matières", icon: BookOpen },
           { id: "reports", label: "Rapports et Exports", icon: FileText },
           { id: "statistics", label: "Statistiques", icon: TrendingUp },

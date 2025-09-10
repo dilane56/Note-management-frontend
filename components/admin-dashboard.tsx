@@ -21,6 +21,8 @@ import { useState } from "react"
 import { Navigation } from "./navigation"
 import { UserManagement } from "./admin/user-management"
 import { SubjectManagement } from "./admin/subject-management"
+import { FiliereManagement } from "./admin/filiere-management"
+import { ClassManagement } from "./admin/class-management"
 
 const systemStats = {
   totalStudents: 1247,
@@ -60,6 +62,10 @@ export function AdminDashboard() {
     switch (activeSection) {
       case "users":
         return <UserManagement />
+      case "filieres":
+        return <FiliereManagement />
+      case "classes":
+        return <ClassManagement />
       case "subjects":
         return <SubjectManagement />
       case "dashboard":

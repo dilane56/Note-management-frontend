@@ -21,17 +21,18 @@ export function LoginPage() {
     e.preventDefault()
     setError("")
 
+    if (!email || !password) {
+      setError("Veuillez remplir tous les champs")
+      return
+    }
+
     const success = await login(email, password)
     if (!success) {
       setError("Email ou mot de passe incorrect")
     }
   }
 
-  const demoAccounts = [
-    { role: "Étudiant", email: "marie.dupont@student.edu", password: "password" },
-    { role: "Enseignant", email: "jean.martin@teacher.edu", password: "password" },
-    { role: "Administrateur", email: "admin@system.edu", password: "password" },
-  ]
+
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -103,32 +104,18 @@ export function LoginPage() {
           </CardContent>
         </Card>
 
-        {/* Demo Accounts */}
+        {/* Demo Account Info */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Comptes de démonstration</CardTitle>
-            <CardDescription className="text-xs">Utilisez ces comptes pour tester l'application</CardDescription>
+            <CardTitle className="text-sm">Compte de test</CardTitle>
+            <CardDescription className="text-xs">Utilisez ce compte pour tester l'application</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {demoAccounts.map((account, index) => (
-              <div key={index} className="flex items-center justify-between p-2 bg-muted rounded-lg text-xs">
-                <div>
-                  <div className="font-medium">{account.role}</div>
-                  <div className="text-muted-foreground">{account.email}</div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setEmail(account.email)
-                    setPassword(account.password)
-                  }}
-                  className="text-xs"
-                >
-                  Utiliser
-                </Button>
-              </div>
-            ))}
+          <CardContent>
+            <div className="p-3 bg-muted rounded-lg text-sm">
+              <div className="font-medium">Administrateur</div>
+              <div className="text-muted-foreground">Email: admin@gmail.com</div>
+              <div className="text-muted-foreground">Mot de passe: password</div>
+            </div>
           </CardContent>
         </Card>
       </div>

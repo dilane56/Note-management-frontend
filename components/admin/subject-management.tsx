@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   Dialog,
@@ -15,157 +16,367 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Edit, Trash2, BookOpen } from "lucide-react"
+import { Plus, Edit, Trash2, Search, BookOpen, Users, UserPlus, Loader2 } from "lucide-react"
+import { useSubjects } from "@/hooks/useSubjects"
 
-const subjects = [
-  { id: 1, name: "Mathématiques", code: "MATH", coefficient: 4, students: 320, teachers: 8, average: 14.2 },
-  { id: 2, name: "Physique", code: "PHYS", coefficient: 3, students: 280, teachers: 6, average: 13.8 },
-  { id: 3, name: "Chimie", code: "CHIM", coefficient: 3, students: 260, teachers: 5, average: 14.5 },
-  { id: 4, name: "Français", code: "FR", coefficient: 4, students: 400, teachers: 10, average: 13.2 },
-  { id: 5, name: "Anglais", code: "ANG", coefficient: 3, students: 380, teachers: 8, average: 15.1 },
-  { id: 6, name: "Histoire-Géographie", code: "HG", coefficient: 3, students: 350, teachers: 7, average: 13.9 },
-]
+interface EditingSubject {
+  id: number
+  name: string
+  coefficient: number
+  noteMaximale: number
+  classId: number
+}
+
+interface AssignTeacherData {
+  subjectId: number
+  subjectName: string
+}
 
 export function SubjectManagement() {
-  const [isAddingSubject, setIsAddingSubject] = useState(false)
+  const { subjects, classes, teachers, loading, createSubject, updateSubject, deleteSubject, assignTeacher } = useSubjects()
+  const [searchTerm, setSearchTerm] = useState("")
+  const [classFilter, setClassFilter] = useState("all")
+  const [isAdding, setIsAdding] = useState(false)
+  const [editing, setEditing] = useState<EditingSubject | null>(null)
+  const [assigningTeacher, setAssigningTeacher] = useState<AssignTeacherData | null>(null)
+  const [formData, setFormData] = useState({ name: "", coefficient: 1, noteMaximale: 20, classId: 0 })
+  const [selectedTeacherId, setSelectedTeacherId] = useState(0)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const filteredSubjects = subjects.filter((subject) => {
+    const matchesSearch = subject.name?.toLowerCase().includes(searchTerm.toLowerCase()) || false
+    const matchesClass = classFilter === "all" || subject.className === classFilter
+    return matchesSearch && matchesClass
+  })
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formData.name.trim() || !formData.classId) return
+
+    setIsSubmitting(true)
+    try {
+      if (editing) {
+        const success = await updateSubject(editing.id, formData)
+        if (success) {
+          setEditing(null)
+          resetForm()
+        }
+      } else {
+        const success = await createSubject(formData)
+        if (success) {
+          setIsAdding(false)
+          resetForm()
+        }
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleEdit = (subject: any) => {
+    const classe = classes.find(c => c.className === subject.className)
+    setEditing({
+      id: subject.id,
+      name: subject.name,
+      coefficient: subject.coefficient,
+      noteMaximale: subject.noteMaximale,
+      classId: classe?.id || 0
+    })
+    setFormData({
+      name: subject.name,
+      coefficient: subject.coefficient,
+      noteMaximale: subject.noteMaximale,
+      classId: classe?.id || 0
+    })
+  }
+
+  const handleDelete = async (id: number) => {
+    if (confirm('Êtes-vous sûr de vouloir supprimer cette matière ?')) {
+      await deleteSubject(id)
+    }
+  }
+
+  const handleAssignTeacher = async () => {
+    if (!assigningTeacher || !selectedTeacherId) return
+
+    setIsSubmitting(true)
+    try {
+      const success = await assignTeacher(selectedTeacherId, assigningTeacher.subjectId)
+      if (success) {
+        setAssigningTeacher(null)
+        setSelectedTeacherId(0)
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const resetForm = () => {
+    setFormData({ name: "", coefficient: 1, noteMaximale: 20, classId: 0 })
+    setEditing(null)
+    setIsAdding(false)
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold">Gestion des Matières</h2>
-          <p className="text-muted-foreground">Configuration des matières et coefficients</p>
+          <p className="text-muted-foreground">Configuration des matières et assignation des enseignants</p>
         </div>
-        <Dialog open={isAddingSubject} onOpenChange={setIsAddingSubject}>
+        <Dialog open={isAdding || !!editing} onOpenChange={(open) => {
+          if (!open) resetForm()
+        }}>
           <DialogTrigger asChild>
-            <Button className="flex items-center space-x-2">
-              <Plus className="w-4 h-4" />
-              <span>Nouvelle Matière</span>
+            <Button onClick={() => setIsAdding(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Nouvelle Matière
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Créer une Matière</DialogTitle>
-              <DialogDescription>Ajoutez une nouvelle matière au système</DialogDescription>
+              <DialogTitle>{editing ? 'Modifier la matière' : 'Créer une Matière'}</DialogTitle>
+              <DialogDescription>
+                {editing ? 'Modifiez les informations de la matière' : 'Ajoutez une nouvelle matière au programme'}
+              </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <Label htmlFor="subjectName">Nom de la matière</Label>
-                <Input id="subjectName" placeholder="Ex: Mathématiques" />
+                <Label htmlFor="name">Nom de la matière</Label>
+                <Input 
+                  id="name" 
+                  value={formData.name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Mathématiques, Physique..." 
+                  required 
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="coefficient">Coefficient</Label>
+                  <Input 
+                    id="coefficient" 
+                    type="number" 
+                    value={formData.coefficient}
+                    onChange={(e) => setFormData(prev => ({ ...prev, coefficient: parseInt(e.target.value) }))}
+                    min="1" 
+                    max="10" 
+                    required 
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="noteMaximale">Note maximale</Label>
+                  <Input 
+                    id="noteMaximale" 
+                    type="number" 
+                    value={formData.noteMaximale}
+                    onChange={(e) => setFormData(prev => ({ ...prev, noteMaximale: parseInt(e.target.value) }))}
+                    min="10" 
+                    max="100" 
+                    required 
+                  />
+                </div>
               </div>
               <div>
-                <Label htmlFor="subjectCode">Code matière</Label>
-                <Input id="subjectCode" placeholder="Ex: MATH" />
+                <Label htmlFor="class">Classe</Label>
+                <Select 
+                  value={formData.classId.toString()} 
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, classId: parseInt(value) }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sélectionner une classe" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {classes.map((classe) => (
+                      <SelectItem key={classe.id} value={classe.id.toString()}>
+                        {classe.className} - {classe.filiereName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div>
-                <Label htmlFor="coefficient">Coefficient</Label>
-                <Input id="coefficient" type="number" min="1" max="10" placeholder="Ex: 4" />
-              </div>
-              <Button className="w-full" onClick={() => setIsAddingSubject(false)}>
-                Créer la Matière
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Traitement...
+                  </>
+                ) : (
+                  editing ? 'Modifier' : 'Créer la Matière'
+                )}
               </Button>
-            </div>
+            </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Matières</CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{subjects.length}</div>
-            <p className="text-xs text-muted-foreground">Actives</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Étudiants Inscrits</CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{subjects.reduce((sum, s) => sum + s.students, 0)}</div>
-            <p className="text-xs text-muted-foreground">Total inscriptions</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Enseignants</CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{subjects.reduce((sum, s) => sum + s.teachers, 0)}</div>
-            <p className="text-xs text-muted-foreground">Assignés</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Moyenne Générale</CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-primary">
-              {(subjects.reduce((sum, s) => sum + s.average, 0) / subjects.length).toFixed(1)}/20
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Rechercher une matière..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">Toutes matières</p>
-          </CardContent>
-        </Card>
-      </div>
+            <Select value={classFilter} onValueChange={setClassFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les classes</SelectItem>
+                {classes.map((classe) => (
+                  <SelectItem key={classe.id} value={classe.className}>
+                    {classe.className}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Subjects Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Liste des Matières</CardTitle>
-          <CardDescription>Gérez les matières, coefficients et assignations</CardDescription>
+          <CardTitle>Liste des Matières ({filteredSubjects.length})</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Matière</TableHead>
-                <TableHead>Code</TableHead>
+                <TableHead>Classe</TableHead>
                 <TableHead>Coefficient</TableHead>
-                <TableHead>Étudiants</TableHead>
+                <TableHead>Note Max</TableHead>
                 <TableHead>Enseignants</TableHead>
-                <TableHead>Moyenne</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {subjects.map((subject) => (
-                <TableRow key={subject.id}>
-                  <TableCell className="font-medium">{subject.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{subject.code}</Badge>
-                  </TableCell>
-                  <TableCell>{subject.coefficient}</TableCell>
-                  <TableCell>{subject.students}</TableCell>
-                  <TableCell>{subject.teachers}</TableCell>
-                  <TableCell>
-                    <Badge variant={subject.average >= 14 ? "default" : "secondary"}>{subject.average}/20</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      <Button variant="ghost" size="sm">
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="text-destructive">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+                    <p className="mt-2">Chargement...</p>
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : filteredSubjects.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8">
+                    Aucune matière trouvée
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredSubjects.map((subject) => (
+                  <TableRow key={subject.id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center space-x-2">
+                        <BookOpen className="w-4 h-4 text-muted-foreground" />
+                        <span>{subject.name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>{subject.className}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{subject.coefficient}</Badge>
+                    </TableCell>
+                    <TableCell>{subject.noteMaximale}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1 items-center">
+                        {subject.teachers.map((teacher, index) => (
+                          <Badge key={index} variant="secondary" className="text-xs">
+                            {teacher.teacherFirstName} {teacher.teacherLastName}
+                          </Badge>
+                        ))}
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 px-2"
+                          onClick={() => setAssigningTeacher({ subjectId: subject.id, subjectName: subject.name })}
+                        >
+                          <UserPlus className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button variant="ghost" size="sm" onClick={() => handleEdit(subject)}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-destructive"
+                          onClick={() => handleDelete(subject.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      {/* Assign Teacher Dialog */}
+      <Dialog open={!!assigningTeacher} onOpenChange={(open) => {
+        if (!open) {
+          setAssigningTeacher(null)
+          setSelectedTeacherId(0)
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assigner un Enseignant</DialogTitle>
+            <DialogDescription>
+              Assignez un enseignant à la matière "{assigningTeacher?.subjectName}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="teacher">Enseignant</Label>
+              <Select 
+                value={selectedTeacherId.toString()} 
+                onValueChange={(value) => setSelectedTeacherId(parseInt(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner un enseignant" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teachers.map((teacher) => (
+                    <SelectItem key={teacher.id} value={teacher.id.toString()}>
+                      {teacher.firstName} {teacher.lastName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button 
+              onClick={handleAssignTeacher} 
+              className="w-full" 
+              disabled={!selectedTeacherId || isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Assignation...
+                </>
+              ) : (
+                'Assigner l\'Enseignant'
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

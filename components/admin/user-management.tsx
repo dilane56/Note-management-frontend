@@ -16,73 +16,90 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { UserPlus, Edit, Trash2, Search } from "lucide-react"
+import { UserPlus, Edit, Trash2, Search, Loader2 } from "lucide-react"
+import { useUsers } from "@/hooks/useUsers"
+import { UserForm } from "./user-form"
+import { toast } from "sonner"
 
-const users = [
-  {
-    id: 1,
-    name: "Marie Dubois",
-    email: "marie.dubois@ecole.fr",
-    role: "teacher",
-    subject: "Mathématiques",
-    status: "Actif",
-    createdAt: "2024-01-15",
-  },
-  {
-    id: 2,
-    name: "Pierre Martin",
-    email: "pierre.martin@ecole.fr",
-    role: "student",
-    class: "Terminale S1",
-    status: "Actif",
-    createdAt: "2024-01-20",
-  },
-  {
-    id: 3,
-    name: "Sophie Bernard",
-    email: "sophie.bernard@ecole.fr",
-    role: "teacher",
-    subject: "Physique",
-    status: "Inactif",
-    createdAt: "2024-01-10",
-  },
-  {
-    id: 4,
-    name: "Lucas Moreau",
-    email: "lucas.moreau@ecole.fr",
-    role: "student",
-    class: "Première S2",
-    status: "Actif",
-    createdAt: "2024-01-25",
-  },
-  { id: 5, name: "Emma Petit", email: "emma.petit@ecole.fr", role: "admin", status: "Actif", createdAt: "2024-01-05" },
-]
+interface EditingUser {
+  id: number
+  firstName: string
+  lastName: string
+  email: string
+  role: 'ADMIN' | 'STUDENT' | 'TEACHER'
+  studentClassId?: number
+}
 
 export function UserManagement() {
+  const { users, classes, loading, createUser, updateUser, deleteUser } = useUsers()
   const [searchTerm, setSearchTerm] = useState("")
   const [roleFilter, setRoleFilter] = useState("all")
   const [isAddingUser, setIsAddingUser] = useState(false)
+  const [editingUser, setEditingUser] = useState<EditingUser | null>(null)
 
   const filteredUsers = users.filter((user) => {
+    const fullName = `${user.firstName} ${user.lastName}`
     const matchesSearch =
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesRole = roleFilter === "all" || user.role === roleFilter
+    const matchesRole = roleFilter === "all" || user.role.toLowerCase() === roleFilter
     return matchesSearch && matchesRole
   })
 
-  const getRoleLabel = (role: string) => {
-    switch (role) {
-      case "admin":
+  const getRoleLabel = (role: string | null | undefined) => {
+    if (!role) return 'Non défini'
+    
+    switch (role.toUpperCase()) {
+      case "ADMIN":
         return "Administrateur"
-      case "teacher":
+      case "TEACHER":
         return "Enseignant"
-      case "student":
+      case "STUDENT":
         return "Étudiant"
       default:
         return role
     }
   }
+
+  const handleCreateUser = async (formData: any) => {
+    const success = await createUser(formData)
+    if (success) {
+      setIsAddingUser(false)
+    }
+    return success
+  }
+
+  const handleUpdateUser = async (formData: any) => {
+    if (!editingUser) return false
+    const success = await updateUser(editingUser.id, formData)
+    if (success) {
+      setEditingUser(null)
+    }
+    return success
+  }
+
+  const openAddDialog = () => {
+    setEditingUser(null)
+    setIsAddingUser(true)
+  }
+
+  const handleEdit = (user: any) => {
+    setEditingUser({
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role
+    })
+  }
+
+  const handleDelete = async (id: number) => {
+    if (confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) {
+      await deleteUser(id)
+    }
+  }
+
+
 
   return (
     <div className="space-y-6">
@@ -91,44 +108,31 @@ export function UserManagement() {
           <h2 className="text-2xl font-bold">Gestion des Utilisateurs</h2>
           <p className="text-muted-foreground">Gérez les comptes étudiants, enseignants et administrateurs</p>
         </div>
-        <Dialog open={isAddingUser} onOpenChange={setIsAddingUser}>
+        <Dialog open={isAddingUser || !!editingUser} onOpenChange={(open) => {
+          if (!open) {
+            setIsAddingUser(false)
+            setEditingUser(null)
+          }
+        }}>
           <DialogTrigger asChild>
-            <Button className="flex items-center space-x-2">
+            <Button className="flex items-center space-x-2" onClick={openAddDialog}>
               <UserPlus className="w-4 h-4" />
               <span>Nouvel Utilisateur</span>
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Créer un Utilisateur</DialogTitle>
-              <DialogDescription>Ajoutez un nouvel étudiant, enseignant ou administrateur</DialogDescription>
+              <DialogTitle>{editingUser ? 'Modifier l\'utilisateur' : 'Créer un Utilisateur'}</DialogTitle>
+              <DialogDescription>
+                {editingUser ? 'Modifiez les informations de l\'utilisateur' : 'Ajoutez un nouvel étudiant, enseignant ou administrateur'}
+              </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="name">Nom complet</Label>
-                <Input id="name" placeholder="Nom Prénom" />
-              </div>
-              <div>
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="email@exemple.com" />
-              </div>
-              <div>
-                <Label htmlFor="role">Rôle</Label>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner un rôle" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="student">Étudiant</SelectItem>
-                    <SelectItem value="teacher">Enseignant</SelectItem>
-                    <SelectItem value="admin">Administrateur</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button className="w-full" onClick={() => setIsAddingUser(false)}>
-                Créer le Compte
-              </Button>
-            </div>
+            <UserForm
+              initialData={editingUser || undefined}
+              classes={classes}
+              onSubmit={editingUser ? handleUpdateUser : handleCreateUser}
+              isEditing={!!editingUser}
+            />
           </DialogContent>
         </Dialog>
       </div>
@@ -182,33 +186,50 @@ export function UserManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredUsers.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell className="font-medium">{user.name}</TableCell>
-                  <TableCell>{user.email}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{getRoleLabel(user.role)}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {user.role === "teacher" && user.subject}
-                    {user.role === "student" && user.class}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={user.status === "Actif" ? "default" : "secondary"}>{user.status}</Badge>
-                  </TableCell>
-                  <TableCell>{new Date(user.createdAt).toLocaleDateString("fr-FR")}</TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      <Button variant="ghost" size="sm">
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="text-destructive">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+                    <p className="mt-2">Chargement...</p>
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : filteredUsers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8">
+                    Aucun utilisateur trouvé
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredUsers.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell className="font-medium">{user.firstName} {user.lastName}</TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{getRoleLabel(user.role)}</Badge>
+                    </TableCell>
+                    <TableCell>-</TableCell>
+                    <TableCell>
+                      <Badge variant="default">Actif</Badge>
+                    </TableCell>
+                    <TableCell>-</TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button variant="ghost" size="sm" onClick={() => handleEdit(user)}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-destructive"
+                          onClick={() => handleDelete(user.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
