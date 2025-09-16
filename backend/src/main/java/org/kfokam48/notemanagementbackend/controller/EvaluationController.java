@@ -2,6 +2,7 @@ package org.kfokam48.notemanagementbackend.controller;
 
 import org.kfokam48.notemanagementbackend.dto.evaluation.EvaluationDTO;
 import org.kfokam48.notemanagementbackend.dto.evaluation.EvaluationReponseDTO;
+import org.kfokam48.notemanagementbackend.model.Evaluation;
 import org.kfokam48.notemanagementbackend.service.impl.EvaluationServiceImpl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -33,13 +34,14 @@ public class EvaluationController {
 
     // ➕ Ajouter une nouvelle évaluation
     @PostMapping
-    public ResponseEntity<EvaluationReponseDTO> createEvaluation(@RequestBody EvaluationDTO evaluationDTO) {
-        return ResponseEntity.ok(evaluationService.createEvaluation(evaluationDTO));
+    public ResponseEntity<Evaluation> createEvaluation(@RequestBody EvaluationDTO request) {
+        Evaluation evaluation = evaluationService.addEvaluation(request.getType(), request.getAnneeAcademique());
+        return ResponseEntity.ok(evaluation);
     }
 
     // ✏️ Modifier une évaluation existante
     @PutMapping("/{id}")
-    public ResponseEntity<EvaluationReponseDTO> updateEvaluation(@RequestBody EvaluationDTO evaluationDTO, @PathVariable Long id) {
+    public ResponseEntity<Evaluation> updateEvaluation(@RequestBody EvaluationDTO evaluationDTO, @PathVariable Long id) {
         return ResponseEntity.ok(evaluationService.updateEvaluation(id, evaluationDTO));
     }
 

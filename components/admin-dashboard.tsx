@@ -17,46 +17,66 @@ import {
 } from "@/components/ui/dialog"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
 import { Plus, Download, Users, BookOpen, TrendingUp, Settings, FileText, UserPlus } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Navigation } from "./navigation"
+import { useAuth } from "@/contexts/auth-context"
+import { api } from "@/lib/api"
 import { UserManagement } from "./admin/user-management"
 import { SubjectManagement } from "./admin/subject-management"
 import { FiliereManagement } from "./admin/filiere-management"
 import { ClassManagement } from "./admin/class-management"
-
-const systemStats = {
-  totalStudents: 1247,
-  totalTeachers: 45,
-  totalSubjects: 12,
-  overallAverage: 14.3,
-  passRate: 82.5,
-}
-
-const subjectData = [
-  { name: "Mathématiques", students: 320, average: 14.2, teachers: 8 },
-  { name: "Physique", students: 280, average: 13.8, teachers: 6 },
-  { name: "Chimie", students: 260, average: 14.5, teachers: 5 },
-  { name: "Français", students: 400, average: 13.2, teachers: 10 },
-  { name: "Anglais", students: 380, average: 15.1, teachers: 8 },
-]
-
-const gradeDistribution = [
-  { range: "16-20", count: 245, color: "#00bcd4" },
-  { range: "14-16", count: 380, color: "#164e63" },
-  { range: "12-14", count: 420, color: "#ecfeff" },
-  { range: "10-12", count: 150, color: "#475569" },
-  { range: "0-10", count: 52, color: "#be123c" },
-]
-
-const recentUsers = [
-  { id: 1, name: "Marie Dubois", role: "Enseignant", subject: "Mathématiques", status: "Actif" },
-  { id: 2, name: "Pierre Martin", role: "Étudiant", class: "Terminale S1", status: "Actif" },
-  { id: 3, name: "Sophie Bernard", role: "Enseignant", subject: "Physique", status: "Inactif" },
-  { id: 4, name: "Lucas Moreau", role: "Étudiant", class: "Première S2", status: "Actif" },
-]
+import { EvaluationManagement } from "./admin/evaluation-management"
+import { TranscriptManagement } from "./admin/transcript-management"
+import { ReportsManagement } from "./admin/reports-management"
+import { StatisticsManagement } from "./admin/statistics-management"
 
 export function AdminDashboard() {
+  const { user } = useAuth()
   const [activeSection, setActiveSection] = useState("dashboard")
+  const [dashboardData, setDashboardData] = useState({
+    totalStudents: 0,
+    totalTeachers: 0,
+    totalSubjects: 0,
+    totalClasses: 0,
+    recentUsers: []
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true)
+        const [users, subjects, classes] = await Promise.all([
+          api.get('/api/users'),
+          api.get('/api/subjects'),
+          api.get('/api/classes')
+        ])
+        
+        const students = users.filter((u: any) => u.role === 'STUDENT')
+        const teachers = users.filter((u: any) => u.role === 'TEACHER')
+        const recentUsers = users.slice(-4).map((u: any) => ({
+          id: u.id,
+          name: `${u.firstName} ${u.lastName}`,
+          role: u.role === 'STUDENT' ? 'Étudiant' : u.role === 'TEACHER' ? 'Enseignant' : 'Admin',
+          status: 'Actif'
+        }))
+        
+        setDashboardData({
+          totalStudents: students.length,
+          totalTeachers: teachers.length,
+          totalSubjects: subjects.length,
+          totalClasses: classes.length,
+          recentUsers
+        })
+      } catch (error) {
+        console.error('Erreur lors du chargement des données:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchDashboardData()
+  }, [])
 
   const renderContent = () => {
     switch (activeSection) {
@@ -68,6 +88,14 @@ export function AdminDashboard() {
         return <ClassManagement />
       case "subjects":
         return <SubjectManagement />
+      case "evaluations":
+        return <EvaluationManagement />
+      case "transcripts":
+        return <TranscriptManagement />
+      case "reports":
+        return <ReportsManagement />
+      case "statistics":
+        return <StatisticsManagement />
       case "dashboard":
       default:
         return (
@@ -80,7 +108,7 @@ export function AdminDashboard() {
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{systemStats.totalStudents.toLocaleString()}</div>
+                  <div className="text-2xl font-bold">{dashboardData.totalStudents.toLocaleString()}</div>
                   <p className="text-xs text-muted-foreground">Inscrits</p>
                 </CardContent>
               </Card>
@@ -91,7 +119,7 @@ export function AdminDashboard() {
                   <BookOpen className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{systemStats.totalTeachers}</div>
+                  <div className="text-2xl font-bold">{dashboardData.totalTeachers}</div>
                   <p className="text-xs text-muted-foreground">Actifs</p>
                 </CardContent>
               </Card>
@@ -102,7 +130,7 @@ export function AdminDashboard() {
                   <Settings className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{systemStats.totalSubjects}</div>
+                  <div className="text-2xl font-bold">{dashboardData.totalSubjects}</div>
                   <p className="text-xs text-muted-foreground">Disponibles</p>
                 </CardContent>
               </Card>
@@ -113,70 +141,66 @@ export function AdminDashboard() {
                   <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-primary">{systemStats.overallAverage}/20</div>
-                  <p className="text-xs text-muted-foreground">Établissement</p>
+                  <div className="text-2xl font-bold text-primary">-</div>
+                  <p className="text-xs text-muted-foreground">Calcul en cours</p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Taux de Réussite</CardTitle>
+                  <CardTitle className="text-sm font-medium">Classes</CardTitle>
                   <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-accent">{systemStats.passRate}%</div>
-                  <p className="text-xs text-muted-foreground">≥ 10/20</p>
+                  <div className="text-2xl font-bold text-accent">{dashboardData.totalClasses}</div>
+                  <p className="text-xs text-muted-foreground">Classes</p>
                 </CardContent>
               </Card>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Subject Performance */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Performance par Matière</CardTitle>
-                  <CardDescription>Moyennes et effectifs</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={subjectData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
-                      <YAxis />
-                      <Tooltip />
-                      <Bar dataKey="average" fill="hsl(var(--chart-1))" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              {/* Grade Distribution */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Répartition des Notes</CardTitle>
-                  <CardDescription>Distribution générale des résultats</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <PieChart>
-                      <Pie
-                        data={gradeDistribution}
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={80}
-                        dataKey="count"
-                        label={({ range, count }) => `${range}: ${count}`}
-                      >
-                        {gradeDistribution.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </div>
+            {/* Actions rapides */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Actions Rapides</CardTitle>
+                <CardDescription>Accès direct aux fonctionnalités de gestion</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Button 
+                    variant="outline" 
+                    className="h-20 flex flex-col items-center justify-center space-y-2"
+                    onClick={() => setActiveSection("users")}
+                  >
+                    <Users className="w-6 h-6" />
+                    <span>Utilisateurs</span>
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="h-20 flex flex-col items-center justify-center space-y-2"
+                    onClick={() => setActiveSection("subjects")}
+                  >
+                    <BookOpen className="w-6 h-6" />
+                    <span>Matières</span>
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="h-20 flex flex-col items-center justify-center space-y-2"
+                    onClick={() => setActiveSection("classes")}
+                  >
+                    <Settings className="w-6 h-6" />
+                    <span>Classes</span>
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="h-20 flex flex-col items-center justify-center space-y-2"
+                    onClick={() => setActiveSection("evaluations")}
+                  >
+                    <FileText className="w-6 h-6" />
+                    <span>Évaluations</span>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Management Actions */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -236,17 +260,31 @@ export function AdminDashboard() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {recentUsers.map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell className="font-medium">{user.name}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{user.role}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={user.status === "Actif" ? "default" : "secondary"}>{user.status}</Badge>
+                      {loading ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-center py-4">
+                            Chargement...
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ) : dashboardData.recentUsers.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-center py-4 text-muted-foreground">
+                            Aucun utilisateur récent
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        dashboardData.recentUsers.map((user) => (
+                          <TableRow key={user.id}>
+                            <TableCell className="font-medium">{user.name}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{user.role}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={user.status === "Actif" ? "default" : "secondary"}>{user.status}</Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </CardContent>
@@ -303,49 +341,7 @@ export function AdminDashboard() {
               </Card>
             </div>
 
-            {/* Subject Management */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>Gestion des Matières</CardTitle>
-                  <CardDescription>Configuration des matières et coefficients</CardDescription>
-                </div>
-                <Button variant="outline" className="flex items-center space-x-2 bg-transparent">
-                  <Plus className="w-4 h-4" />
-                  <span>Nouvelle Matière</span>
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Matière</TableHead>
-                      <TableHead>Étudiants</TableHead>
-                      <TableHead>Enseignants</TableHead>
-                      <TableHead>Moyenne</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {subjectData.map((subject, index) => (
-                      <TableRow key={index}>
-                        <TableCell className="font-medium">{subject.name}</TableCell>
-                        <TableCell>{subject.students}</TableCell>
-                        <TableCell>{subject.teachers}</TableCell>
-                        <TableCell>
-                          <Badge variant={subject.average >= 14 ? "default" : "secondary"}>{subject.average}/20</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm">
-                            Modifier
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+
           </div>
         )
     }

@@ -107,28 +107,53 @@ public class JwtRequestFillter extends OncePerRequestFilter {
         } catch (SignatureException e) {
             // Erreur spécifique si la signature du token est invalide
             logger.warn("Signature JWT invalide : {}", e.getMessage());
-            sendUnauthorizedResponse(response, "Signature du token invalide.");
+            sendStructuredErrorResponse(response, "INVALID_SIGNATURE", "Signature du token invalide", request.getRequestURI());
         } catch (io.jsonwebtoken.ExpiredJwtException e) {
             // Erreur spécifique si le token est expiré
             logger.warn("Token JWT expiré : {}", e.getMessage());
-            sendUnauthorizedResponse(response, "Token expiré.");
+            sendStructuredErrorResponse(response, "TOKEN_EXPIRED", "Votre session a expiré. Veuillez vous reconnecter", request.getRequestURI());
         } catch (io.jsonwebtoken.MalformedJwtException e) {
             // Erreur spécifique si le token est malformé
             logger.warn("Token JWT malformé : {}", e.getMessage());
-            sendUnauthorizedResponse(response, "Token malformé.");
+            sendStructuredErrorResponse(response, "MALFORMED_TOKEN", "Format du token invalide", request.getRequestURI());
+        } catch (io.jsonwebtoken.UnsupportedJwtException e) {
+            // Token non supporté
+            logger.warn("Token JWT non supporté : {}", e.getMessage());
+            sendStructuredErrorResponse(response, "UNSUPPORTED_TOKEN", "Type de token non supporté", request.getRequestURI());
+        } catch (IllegalArgumentException e) {
+            // Token vide ou null
+            logger.warn("Token JWT vide ou null : {}", e.getMessage());
+            sendStructuredErrorResponse(response, "EMPTY_TOKEN", "Token manquant ou vide", request.getRequestURI());
         } catch (Exception e) {
             // Gérer toute autre exception inattendue
             logger.error("Erreur lors du traitement du JWT : ", e);
-            sendUnauthorizedResponse(response, "Token invalide ou erreur interne.");
+            sendStructuredErrorResponse(response, "INTERNAL_ERROR", "Erreur interne lors de la validation du token", request.getRequestURI());
         }
     }
 
-    private void sendUnauthorizedResponse(HttpServletResponse response, String message) throws IOException {
+    private void sendStructuredErrorResponse(HttpServletResponse response, String errorCode, String message, String path) throws IOException {
         if (!response.isCommitted()) {
             response.resetBuffer();
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.setContentType("application/json");
-            response.getWriter().write("{\"error\": \"" + message + "\"}");
+            response.setContentType("application/json; charset=UTF-8");
+            
+            String jsonResponse = String.format(
+                "{"
+                + "\"timestamp\":\"%s\","
+                + "\"status\":401,"
+                + "\"error\":\"Unauthorized\","
+                + "\"message\":\"%s\","
+                + "\"path\":\"%s\","
+                + "\"errorCode\":\"%s\""
+                + "}",
+                java.time.LocalDateTime.now().toString(),
+                message,
+                path,
+                errorCode
+            );
+            
+            response.getWriter().write(jsonResponse);
+            response.getWriter().flush();
         }
     }
 }

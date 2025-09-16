@@ -45,7 +45,7 @@ public class ClassServiceImpl implements ClassService {
     public ClassResponseDTO update(ClassRequestDTO classRequestDTO, Long id) {
         Class classe = classRepository.findById(id).orElseThrow(() -> new RessourceNotFoundException("Class not found"));
         classe.setClassName(classRequestDTO.getClassName());
-        classe.setFiliere(filiereRepository.findById(id).orElseThrow(() -> new RessourceNotFoundException("Filiere not found")));
+        classe.setFiliere(filiereRepository.findById(classRequestDTO.getFiliereId()).orElseThrow(() -> new RessourceNotFoundException("Filiere not found")));
         classRepository.save(classe);
         return classMapper.classToClassRequestDTO(classe);
     }

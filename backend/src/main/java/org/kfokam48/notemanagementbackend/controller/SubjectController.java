@@ -61,7 +61,7 @@ public class SubjectController {
             @ApiResponse(responseCode = "200", description = "Coefficient mis à jour"),
             @ApiResponse(responseCode = "404", description = "Matière non trouvée")
     })
-    @PatchMapping("/subjects/{id}/coefficient")
+    @PatchMapping("/{id}/coefficient")
     public ResponseEntity<SubjectResponseDTO> updateCoefficient(
             @PathVariable Long id,
             @RequestParam double coefficient) {

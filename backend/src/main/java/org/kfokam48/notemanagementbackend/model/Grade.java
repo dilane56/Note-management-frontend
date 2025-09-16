@@ -24,7 +24,7 @@ public class Grade {
     private Subject subject;
 
     @ManyToOne
-    @JoinColumn(name = "evaluation_id")
+    @JoinColumn(name = "evaluation_id", referencedColumnName = "id")
     private Evaluation evaluation;
 
 

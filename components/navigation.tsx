@@ -16,6 +16,7 @@ import {
   LogOut,
   Building2,
   School,
+  CheckSquare,
 } from "lucide-react"
 
 interface NavigationProps {
@@ -35,6 +36,8 @@ export function Navigation({ activeSection, onSectionChange }: NavigationProps) 
           { id: "filieres", label: "Gestion des Filières", icon: Building2 },
           { id: "classes", label: "Gestion des Classes", icon: School },
           { id: "subjects", label: "Gestion des Matières", icon: BookOpen },
+          { id: "evaluations", label: "Gestion des Évaluations", icon: CheckSquare },
+          { id: "transcripts", label: "Gestion des Relevés", icon: FileText },
           { id: "reports", label: "Rapports et Exports", icon: FileText },
           { id: "statistics", label: "Statistiques", icon: TrendingUp },
           { id: "settings", label: "Paramètres Système", icon: Settings },
@@ -43,9 +46,8 @@ export function Navigation({ activeSection, onSectionChange }: NavigationProps) 
         return [
           { id: "dashboard", label: "Tableau de Bord", icon: Home },
           { id: "grades", label: "Saisie des Notes", icon: ClipboardList },
-          { id: "classes", label: "Mes Classes", icon: GraduationCap },
-          { id: "performance", label: "Performance Classes", icon: BarChart3 },
-          { id: "schedule", label: "Planning", icon: Calendar },
+          { id: "my-subjects", label: "Mes Matières", icon: BookOpen },
+          { id: "my-classes", label: "Mes Classes", icon: GraduationCap },
         ]
       case "student":
         return [

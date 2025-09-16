@@ -3,8 +3,14 @@ package org.kfokam48.notemanagementbackend.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.validation.Valid;
 import org.kfokam48.notemanagementbackend.dto.grade.GradeRequestDTO;
 import org.kfokam48.notemanagementbackend.dto.grade.GradeResponseDTO;
+import org.kfokam48.notemanagementbackend.dto.grade.TeacherGradeRequestDTO;
+import org.kfokam48.notemanagementbackend.dto.grade.SimpleGradeRequestDTO;
+import org.kfokam48.notemanagementbackend.dto.student.StudentResponseDTO;
+import org.kfokam48.notemanagementbackend.dto.subject.SubjectResponseDTO;
+import org.kfokam48.notemanagementbackend.enums.TypeEvaluation;
 import org.kfokam48.notemanagementbackend.model.Grade;
 import org.kfokam48.notemanagementbackend.service.GradeService;
 import org.kfokam48.notemanagementbackend.service.impl.GradeServiceImpl;
@@ -38,7 +44,7 @@ public class GradeController {
 
     // ➕ Ajouter une nouvelle note
     @PostMapping
-    public ResponseEntity<GradeResponseDTO> addGrade(@RequestBody GradeRequestDTO gradeRequestDTO) {
+    public ResponseEntity<GradeResponseDTO> addGrade(@Valid @RequestBody GradeRequestDTO gradeRequestDTO) {
         return ResponseEntity.ok(gradeService.addGrade(gradeRequestDTO));
     }
 
@@ -65,7 +71,7 @@ public class GradeController {
     public ResponseEntity<List<GradeResponseDTO>> getStudentGrades(@PathVariable Long id) {
         return ResponseEntity.ok(gradeService.getGradesByStudentId(id));
     }
-    @PatchMapping("/grades/{gradeId}/comment")
+    @PatchMapping("/{gradeId}/comment")
     public ResponseEntity<GradeResponseDTO> addComment(
             @PathVariable Long gradeId,
             @RequestParam String comment) {
@@ -89,13 +95,89 @@ public class GradeController {
         return ResponseEntity.ok(grades);
     }
 
-    @GetMapping("/student/{studentId}/semestre")
+    @GetMapping("/student/{studentId}/evaluation/{typeEvaluation}/grades")
     public ResponseEntity<List<GradeResponseDTO>> getGradesByStudentAndSemestre(
             @PathVariable Long studentId,
-            @RequestParam String semestre
-    ) {
-        List<GradeResponseDTO> grades = gradeService.getGradesByStudentAndTypeEvaluationName(studentId, semestre);
+            @PathVariable String typeEvaluation) {
+        List<GradeResponseDTO> grades = gradeService.getGradesByStudentAndTypeEvaluationName(studentId, TypeEvaluation.valueOf(typeEvaluation));
         return ResponseEntity.ok(grades);
+    }
+
+    @Operation(
+            summary = "Ajouter une note pour une matière spécifique",
+            description = "Permet à un enseignant d'ajouter une note pour un étudiant dans une matière donnée."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Note ajoutée avec succès"),
+            @ApiResponse(responseCode = "404", description = "Étudiant, matière ou évaluation non trouvé")
+    })
+    @PostMapping("/subjects/{subjectId}/students/{studentId}/evaluations/{evaluationId}")
+    public ResponseEntity<GradeResponseDTO> addGradeForSubject(
+            @PathVariable Long subjectId,
+            @PathVariable Long studentId,
+            @PathVariable Long evaluationId,
+           @Valid @RequestBody GradeRequestDTO gradeRequestDTO) {
+        gradeRequestDTO.setStudentID(studentId);
+        gradeRequestDTO.setSubjectID(subjectId);
+        gradeRequestDTO.setEvaluationId(evaluationId);
+        return ResponseEntity.ok(gradeService.addGrade(gradeRequestDTO));
+    }
+
+    @Operation(
+            summary = "Ajouter une note (interface enseignant simplifiée)",
+            description = "Interface simplifiée pour les enseignants : ajouter une note en spécifiant seulement la valeur, l'évaluation et un commentaire optionnel."
+    )
+    @PostMapping("/teacher/subjects/{subjectId}/students/{studentId}/evaluations/{evaluationId}")
+    public ResponseEntity<GradeResponseDTO> addGradeByTeacher(
+            @PathVariable Long subjectId,
+            @PathVariable Long studentId,
+            @PathVariable Long evaluationId,
+            @RequestBody TeacherGradeRequestDTO teacherGradeRequest) {
+        teacherGradeRequest.setEvaluationId(evaluationId);
+        return ResponseEntity.ok(gradeService.addGradeWithComment(studentId, subjectId, teacherGradeRequest));
+    }
+
+    @Operation(
+            summary = "Ajouter une note (interface ultra-simplifiée)",
+            description = "Interface ultra-simplifiée : tous les paramètres dans l'URL, seule la note et un commentaire optionnel dans le body."
+    )
+    @PostMapping("/simple/subjects/{subjectId}/students/{studentId}/evaluations/{evaluationId}")
+    public ResponseEntity<GradeResponseDTO> addSimpleGrade(
+            @PathVariable Long subjectId,
+            @PathVariable Long studentId,
+            @PathVariable Long evaluationId,
+            @RequestBody SimpleGradeRequestDTO simpleGradeRequest) {
+        GradeRequestDTO gradeRequest = new GradeRequestDTO();
+        gradeRequest.setNoteValue(simpleGradeRequest.getNoteValue());
+        gradeRequest.setStudentID(studentId);
+        gradeRequest.setSubjectID(subjectId);
+        gradeRequest.setEvaluationId(evaluationId);
+        
+        GradeResponseDTO savedGrade = gradeService.addGrade(gradeRequest);
+        
+        if (simpleGradeRequest.getComment() != null && !simpleGradeRequest.getComment().trim().isEmpty()) {
+            savedGrade = gradeService.updateGradeComment(savedGrade.getGradeId(), simpleGradeRequest.getComment());
+        }
+        
+        return ResponseEntity.ok(savedGrade);
+    }
+
+    @Operation(
+            summary = "Récupérer les étudiants d'une matière",
+            description = "Récupère tous les étudiants de la classe associée à une matière donnée."
+    )
+    @GetMapping("/subjects/{subjectId}/students")
+    public ResponseEntity<List<StudentResponseDTO>> getStudentsBySubject(@PathVariable Long subjectId) {
+        return ResponseEntity.ok(gradeService.getStudentsBySubject(subjectId));
+    }
+
+    @Operation(
+            summary = "Récupérer les matières d'un enseignant",
+            description = "Récupère toutes les matières assignées à un enseignant."
+    )
+    @GetMapping("/teacher/{teacherId}/subjects")
+    public ResponseEntity<List<SubjectResponseDTO>> getSubjectsByTeacher(@PathVariable Long teacherId) {
+        return ResponseEntity.ok(gradeService.getSubjectsByTeacher(teacherId));
     }
 
 }

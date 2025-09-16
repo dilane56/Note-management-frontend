@@ -81,6 +81,7 @@ export const useClasses = () => {
     createClass,
     updateClass,
     deleteClass,
-    refetch: fetchData
+    refetch: fetchData,
+    fetchClasses: fetchData
   }
 }

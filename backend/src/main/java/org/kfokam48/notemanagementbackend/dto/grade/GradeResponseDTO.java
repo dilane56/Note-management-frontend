@@ -2,6 +2,8 @@ package org.kfokam48.notemanagementbackend.dto.grade;
 
 import lombok.Data;
 import org.kfokam48.notemanagementbackend.dto.classes.StudentInClassDTo;
+import org.kfokam48.notemanagementbackend.model.Evaluation;
+
 @Data
 public class GradeResponseDTO {
     private Long gradeId;
@@ -9,6 +11,6 @@ public class GradeResponseDTO {
     private String comment;
     private StudentInClassDTo student;
     private String subjectName;
-    private EvaluationInGradeDTO evaluation;
+    private Evaluation evaluation;
 
 }

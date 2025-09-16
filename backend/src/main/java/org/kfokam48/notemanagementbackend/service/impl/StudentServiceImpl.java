@@ -4,9 +4,11 @@ import jakarta.transaction.Transactional;
 import org.kfokam48.notemanagementbackend.dto.grade.GradeResponseDTO;
 import org.kfokam48.notemanagementbackend.dto.student.StudentDTO;
 import org.kfokam48.notemanagementbackend.dto.student.StudentResponseDTO;
+import org.kfokam48.notemanagementbackend.dto.student.StudentRankingDTO;
 import org.kfokam48.notemanagementbackend.enums.Roles;
 import org.kfokam48.notemanagementbackend.exception.RessourceNotFoundException;
 import org.kfokam48.notemanagementbackend.mapper.StudentMapper;
+import org.kfokam48.notemanagementbackend.model.Grade;
 import org.kfokam48.notemanagementbackend.model.Student;
 import org.kfokam48.notemanagementbackend.repository.ClassRepository;
 import org.kfokam48.notemanagementbackend.repository.GradeRepository;
@@ -74,10 +76,29 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public List<GradeResponseDTO> getGradesBySubject(Long subjectId) {
-
-
-
         return List.of();
+    }
+
+    @Override
+    public StudentRankingDTO getStudentRanking(Long studentId) {
+        Student student = studentRepository.findById(studentId)
+            .orElseThrow(() -> new RessourceNotFoundException("Student not found"));
+        
+        List<Grade> studentGrades = gradeRepository.findByStudentId(studentId);
+        double studentAverage = studentGrades.stream().mapToDouble(Grade::getValue).average().orElse(0.0);
+        
+        List<Student> classmates = studentRepository.findByStudentClassId(student.getStudentClass().getId());
+        
+        List<Double> classAverages = classmates.stream()
+            .map(s -> gradeRepository.findByStudentId(s.getId()).stream()
+                .mapToDouble(Grade::getValue).average().orElse(0.0))
+            .sorted((a, b) -> Double.compare(b, a))
+            .toList();
+        
+        int rank = classAverages.indexOf(studentAverage) + 1;
+        double classAverage = classAverages.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        
+        return new StudentRankingDTO(rank, classmates.size(), classAverage, studentAverage);
     }
 
 

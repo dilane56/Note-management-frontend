@@ -45,16 +45,20 @@ public class StudentMapper {
 
     public ClassInStudentDTO classToclassInStudentDTO(Class classe) {
         ClassInStudentDTO classInStudentDTO = new ClassInStudentDTO();
+        classInStudentDTO.setClassId(classe.getId());
         classInStudentDTO.setClassName(classe.getClassName());
         classInStudentDTO.setFiliereName(classe.getFiliere().getName());
         return classInStudentDTO;
     }
     public NoteInStudentDTO noteToNoteInStudentDTO(Grade note) {
         NoteInStudentDTO noteInStudentDTO = new NoteInStudentDTO();
+        noteInStudentDTO.setNoteId(note.getId());
         noteInStudentDTO.setNoteValue(note.getValue());
         noteInStudentDTO.setComment(note.getComment());
         noteInStudentDTO.setSubjectName(note.getSubject().getName());
-        noteInStudentDTO.setSubjectCoefficient(noteInStudentDTO.getSubjectCoefficient());
+        noteInStudentDTO.setSubjectId(note.getSubject().getId());
+        noteInStudentDTO.setSubjectCoefficient(note.getSubject().getCoefficient());
+        noteInStudentDTO.setEvaluationReponse(note.getEvaluation());
         return noteInStudentDTO;
 
     }

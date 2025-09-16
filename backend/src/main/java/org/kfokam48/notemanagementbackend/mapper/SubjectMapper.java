@@ -46,6 +46,7 @@ public class SubjectMapper {
 
     public TeacherInSubjectDTO teacherToTeacherInSubjectDTO(Teacher teacher) {
         TeacherInSubjectDTO teacher1 = new TeacherInSubjectDTO();
+        teacher1.setTeacherId(teacher.getId());
         teacher1.setTeacherFirstName(teacher.getFirstName());
         teacher1.setTeacherLastName(teacher.getLastName());
         return teacher1;

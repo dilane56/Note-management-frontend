@@ -12,6 +12,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"student_id", "evaluation_id"}))
 public class Transcript {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,10 +24,9 @@ public class Transcript {
     @JoinColumn(name = "student_id")
     private Student student;
 
-    @OneToMany( cascade = CascadeType.ALL, orphanRemoval = true)
+    @Transient
     private List<Grade> grades = new ArrayList<>();
 
-    private String academicYear;
     private double average;
     private LocalDate updateDate;
 

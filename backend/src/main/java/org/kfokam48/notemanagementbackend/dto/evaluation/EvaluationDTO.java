@@ -1,10 +1,11 @@
 package org.kfokam48.notemanagementbackend.dto.evaluation;
 
 import lombok.Data;
+import org.kfokam48.notemanagementbackend.enums.TypeEvaluation;
 
 
 @Data
 public class EvaluationDTO {
-private String typeEvaluationName;
-private String sessionEvaluation;
+    private TypeEvaluation type;
+    private String anneeAcademique;
 }

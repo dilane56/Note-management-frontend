@@ -4,6 +4,7 @@ import lombok.Data;
 
 @Data
 public class TeacherInSubjectDTO {
+    private Long teacherId;
     private String teacherFirstName;
     private String teacherLastName;
 }

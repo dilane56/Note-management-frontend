@@ -7,7 +7,7 @@ public class TranscriptRequestDTO {
 
     private Long studentId;
     private Long evaluationId;
-    private String academicYear;
+
 
 
 }

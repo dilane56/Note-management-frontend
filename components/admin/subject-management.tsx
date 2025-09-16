@@ -101,8 +101,8 @@ export function SubjectManagement() {
 
     setIsSubmitting(true)
     try {
-      const success = await assignTeacher(selectedTeacherId, assigningTeacher.subjectId)
-      if (success) {
+      const result = await assignTeacher(selectedTeacherId, assigningTeacher.subjectId)
+      if (result) {
         setAssigningTeacher(null)
         setSelectedTeacherId(0)
       }

@@ -25,6 +25,6 @@ public class UserMapper {
     }
 
     public List<UserResponseDTO>  userListToUserResponseDTOList(List<User> userList) {
-        return modelMapper.map(userList, List.class);
+        return userList.stream().map(this::userToUserResponseDTO).toList();
     }
 }

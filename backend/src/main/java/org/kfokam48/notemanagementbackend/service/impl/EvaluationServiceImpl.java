@@ -3,6 +3,8 @@ package org.kfokam48.notemanagementbackend.service.impl;
 import jakarta.transaction.Transactional;
 import org.kfokam48.notemanagementbackend.dto.evaluation.EvaluationDTO;
 import org.kfokam48.notemanagementbackend.dto.evaluation.EvaluationReponseDTO;
+import org.kfokam48.notemanagementbackend.enums.TypeEvaluation;
+import org.kfokam48.notemanagementbackend.exception.DuplicateEvaluationException;
 import org.kfokam48.notemanagementbackend.exception.RessourceNotFoundException;
 import org.kfokam48.notemanagementbackend.mapper.EvaluationMapper;
 import org.kfokam48.notemanagementbackend.model.Evaluation;
@@ -35,17 +37,33 @@ public class EvaluationServiceImpl implements EvaluationService {
     }
 
     @Override
-    public EvaluationReponseDTO createEvaluation(EvaluationDTO evaluationDTO) {
-       return evaluationMapper.evaluationToEvaluationReponseDTO(evaluationRepository.save(evaluationMapper.evaluationDTOToEvaluation(evaluationDTO)));
+    public Evaluation addEvaluation(TypeEvaluation type, String anneeAcademique) {
+        // Vérifier si déjà existant
+        evaluationRepository.findByTypeAndAnneeAcademique(type, anneeAcademique)
+                .ifPresent(e -> {
+                    throw new DuplicateEvaluationException(
+                            "Une évaluation de type " + type +
+                                    " existe déjà pour l'année académique " + anneeAcademique
+                    );
+                });
+
+        // Sauvegarder
+        Evaluation evaluation = new Evaluation();
+        evaluation.setType(type);
+        evaluation.setAnneeAcademique(anneeAcademique);
+
+        return evaluationRepository.save(evaluation);
     }
 
+
+
     @Override
-    public EvaluationReponseDTO updateEvaluation(Long id, EvaluationDTO evaluationDTO) {
+    public Evaluation updateEvaluation(Long id, EvaluationDTO evaluationDTO) {
         Evaluation evaluation = evaluationRepository.findById(id).orElseThrow(()->new RessourceNotFoundException("Evaluation not found"));
-        evaluation.setSessionEvaluation(evaluationDTO.getSessionEvaluation());
-        evaluation.setTypeEvaluationName(evaluationDTO.getTypeEvaluationName());
+        evaluation.setType(evaluationDTO.getType());
+        evaluation.setAnneeAcademique(evaluationDTO.getAnneeAcademique());
         evaluation = evaluationRepository.save(evaluation);
-        return evaluationMapper.evaluationToEvaluationReponseDTO(evaluation);
+        return evaluation;
     }
 
     @Override

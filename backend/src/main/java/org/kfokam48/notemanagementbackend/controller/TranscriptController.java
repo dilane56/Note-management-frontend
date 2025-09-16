@@ -5,6 +5,7 @@ import org.kfokam48.notemanagementbackend.dto.transcript.TranscriptRequestDTO;
 import org.kfokam48.notemanagementbackend.dto.transcript.TranscriptResponseDTO;
 import org.kfokam48.notemanagementbackend.service.impl.TranscriptServiceImpl;
 import org.kfokam48.notemanagementbackend.service.pdf.PdfService;
+import org.kfokam48.notemanagementbackend.service.pdf.ZipTranscriptService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,10 +17,14 @@ public class TranscriptController {
 
     private final TranscriptServiceImpl transcriptService;
     private final PdfService pdfService;
+    private final ZipTranscriptService zipTranscriptService;
 
-    public TranscriptController(TranscriptServiceImpl transcriptService, PdfService pdfService) {
+    public TranscriptController(TranscriptServiceImpl transcriptService, 
+                               PdfService pdfService,
+                               ZipTranscriptService zipTranscriptService) {
         this.transcriptService = transcriptService;
         this.pdfService = pdfService;
+        this.zipTranscriptService = zipTranscriptService;
     }
 
 
@@ -35,37 +40,52 @@ public class TranscriptController {
         return ResponseEntity.ok(transcriptService.getTranscriptById(id));
     }
 
-    // ➕ Ajouter un nouveau relevé de notes
-    @PostMapping
-    public ResponseEntity<TranscriptResponseDTO> createTranscript(@RequestBody TranscriptRequestDTO transcriptRequestDTO) {
-        return ResponseEntity.ok(transcriptService.createTranscript(transcriptRequestDTO));
-    }
 
-    // ✏️ Modifier un relevé de notes existant
-    @PutMapping("/{id}")
-    public ResponseEntity<TranscriptResponseDTO> updateTranscript(@RequestBody TranscriptRequestDTO transcriptRequestDTO, @PathVariable Long id) {
-        return ResponseEntity.ok(transcriptService.updateTranscript(id, transcriptRequestDTO));
-    }
 
     // ❌ Supprimer un relevé de notes
     @DeleteMapping("/{id}")
     public ResponseEntity<String> deleteTranscript(@PathVariable Long id) {
         return ResponseEntity.ok(transcriptService.deleteTranscript(id));
     }
-    @GetMapping("/students/{id}/transcript/download")
-    public ResponseEntity<byte[]> downloadStudentTranscript(@PathVariable Long id) throws DocumentException {
-        byte[] pdfData = transcriptService.generateTranscriptPdf(id);
+    // 📄 Télécharger le relevé de notes d'un étudiant (Version professionnelle)
+    @GetMapping("/students/{studentId}/evaluations/{evaluationId}/download")
+    public ResponseEntity<byte[]> downloadStudentTranscript(@PathVariable Long studentId, @PathVariable Long evaluationId) throws DocumentException {
+        byte[] pdfData = transcriptService.generateEnhancedTranscriptPdf(studentId, evaluationId);
+        String filename = "releve_notes_" + studentId + "_eval_" + evaluationId + "_" + System.currentTimeMillis() + ".pdf";
         return ResponseEntity.ok()
                 .header("Content-Type", "application/pdf")
-                .header("Content-Disposition", "attachment; filename=releve_notes.pdf")
+                .header("Content-Disposition", "attachment; filename=" + filename)
                 .body(pdfData);
     }
-    @PostMapping("/bulk/download")
-    public ResponseEntity<byte[]> downloadBulkTranscripts(@RequestBody List<Long> studentIds) throws DocumentException {
-        byte[] pdfData = pdfService.generateBulkTranscripts(studentIds);
+
+
+    // 📊 Générer le relevé de notes par classe
+    @GetMapping("/class/{classId}/evaluations/{evaluationId}/download")
+    public ResponseEntity<byte[]> downloadClassTranscripts(@PathVariable Long classId, @PathVariable Long evaluationId) throws DocumentException {
+        byte[] pdfData = transcriptService.generateClassTranscripts(classId, evaluationId);
+        String filename = "releves_classe_" + classId + "_eval_" + evaluationId + "_" + System.currentTimeMillis() + ".pdf";
         return ResponseEntity.ok()
                 .header("Content-Type", "application/pdf")
-                .header("Content-Disposition", "attachment; filename=bulk_transcripts.pdf")
+                .header("Content-Disposition", "attachment; filename=" + filename)
                 .body(pdfData);
+    }
+
+    // 📋 Obtenir un aperçu du relevé avant téléchargement
+    @GetMapping("/students/{studentId}/evaluations/{evaluationId}/preview")
+    public ResponseEntity<TranscriptResponseDTO> previewStudentTranscript(@PathVariable Long studentId, @PathVariable Long evaluationId) {
+        return ResponseEntity.ok(transcriptService.getTranscriptByStudentId(studentId, evaluationId));
+    }
+
+    // 📦 Télécharger tous les relevés d'une classe en ZIP
+    @GetMapping("/class/{classId}/evaluations/{evaluationId}/download-zip")
+    public ResponseEntity<byte[]> downloadClassTranscriptsZip(@PathVariable Long classId, @PathVariable Long evaluationId) {
+        byte[] zipData = zipTranscriptService.generateClassTranscriptsZip(classId, evaluationId);
+        String filename = "releves_classe_" + classId + "_eval_" + evaluationId + "_" + System.currentTimeMillis() + ".zip";
+        
+        return ResponseEntity.ok()
+                .header("Content-Type", "application/zip")
+                .header("Content-Disposition", "attachment; filename=" + filename)
+                .header("Content-Length", String.valueOf(zipData.length))
+                .body(zipData);
     }
 }

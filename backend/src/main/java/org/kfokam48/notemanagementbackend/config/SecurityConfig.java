@@ -21,9 +21,11 @@ public class SecurityConfig {
 
 
     private final JwtRequestFillter jwtRequestFilter;
+    private final AuthenticationEntryPointImpl authenticationEntryPoint;
 
-    public SecurityConfig(JwtRequestFillter jwtRequestFilter) {
+    public SecurityConfig(JwtRequestFillter jwtRequestFilter, AuthenticationEntryPointImpl authenticationEntryPoint) {
         this.jwtRequestFilter = jwtRequestFilter;
+        this.authenticationEntryPoint = authenticationEntryPoint;
     }
 
 
@@ -52,7 +54,7 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/swagger-resources/**",
                                 "/webjars/**",
-                                "/api/secretaires",
+                                "/api/auth/login",
                                 "/api/patient",
                                 "/api/administrateurs/create",
                                 "/api/medecins",
@@ -61,9 +63,27 @@ public class SecurityConfig {
                         ).permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptionHandling ->
-                        exceptionHandling.accessDeniedHandler((request, response, accessDeniedException) -> {
-                            response.sendError(HttpStatus.FORBIDDEN.value(), "Accès refusé : " + accessDeniedException.getMessage());
-                        })
+                        exceptionHandling
+                                .authenticationEntryPoint(authenticationEntryPoint)
+                                .accessDeniedHandler((request, response, accessDeniedException) -> {
+                                    response.setStatus(HttpStatus.FORBIDDEN.value());
+                                    response.setContentType("application/json; charset=UTF-8");
+                                    String jsonResponse = String.format(
+                                        "{"
+                                        + "\"timestamp\":\"%s\","
+                                        + "\"status\":403,"
+                                        + "\"error\":\"Forbidden\","
+                                        + "\"message\":\"Accès refusé : %s\","
+                                        + "\"path\":\"%s\","
+                                        + "\"errorCode\":\"ACCESS_DENIED\""
+                                        + "}",
+                                        java.time.LocalDateTime.now().toString(),
+                                        accessDeniedException.getMessage(),
+                                        request.getRequestURI()
+                                    );
+                                    response.getWriter().write(jsonResponse);
+                                    response.getWriter().flush();
+                                })
                 )
 
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

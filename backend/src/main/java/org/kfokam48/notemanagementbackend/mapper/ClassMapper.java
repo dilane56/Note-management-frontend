@@ -29,13 +29,17 @@ public class ClassMapper {
     }
 
     public ClassResponseDTO classToClassRequestDTO(Class clazz) {
-        ClassResponseDTO classResponseDTO = modelMapper.map(clazz, ClassResponseDTO.class);
+        ClassResponseDTO classResponseDTO = new ClassResponseDTO();
+        classResponseDTO.setId(clazz.getId());
+        classResponseDTO.setClassName(clazz.getClassName());
         classResponseDTO.setFiliereName(clazz.getFiliere().getName());
+        classResponseDTO.setFiliereId(clazz.getFiliere().getId());
         classResponseDTO.setStudents(studentToStudentInClassDToList(clazz.getStudents()));
         return classResponseDTO;
     }
     public StudentInClassDTo studentToStudentInClassDTo(Student student) {
         StudentInClassDTo studentInClassDTo = new StudentInClassDTo();
+        studentInClassDTo.setStudentId(student.getId());
         studentInClassDTo.setStudentMatricule(student.getMatricule());
         studentInClassDTo.setStudentFirstName(student.getFirstName());
         studentInClassDTo.setStudentLastName(student.getLastName());

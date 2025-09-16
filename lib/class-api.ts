@@ -7,6 +7,19 @@ export interface Class {
   students?: any[]
 }
 
+export interface ClassResponseDTO {
+  id: number
+  className: string
+  filiereId: number
+  filiereName: string
+  students: {
+    studentId: number
+    studentFirstName: string
+    studentLastName: string
+    studentMatricule: string | null
+  }[]
+}
+
 export interface ClassRequest {
   className: string
   filiereId: number

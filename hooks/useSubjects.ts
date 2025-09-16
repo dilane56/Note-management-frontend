@@ -78,8 +78,9 @@ export const useSubjects = () => {
     if (!token) return false
 
     try {
-      const updatedSubject = await subjectApi.assignTeacher(teacherId, subjectId, token)
-      setSubjects(prev => prev.map(s => s.id === subjectId ? updatedSubject : s))
+      await subjectApi.assignTeacher(teacherId, subjectId, token)
+      // Recharger toutes les données pour s'assurer de la cohérence
+      await fetchData()
       toast.success('Enseignant assigné avec succès')
       return true
     } catch (error) {

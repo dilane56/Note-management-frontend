@@ -1,7 +1,8 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import { authApi, type UserResponse, ApiError } from "@/lib/api"
+import { authApi } from "@/lib/auth-api"
+import { type UserResponse, ApiError } from "@/lib/api"
 import { toast } from "sonner"
 
 type UserRole = "student" | "teacher" | "admin"
@@ -52,8 +53,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const storedToken = localStorage.getItem("eduGradesToken")
     
     if (storedUser && storedToken) {
-      setUser(JSON.parse(storedUser))
-      setToken(storedToken)
+      try {
+        setUser(JSON.parse(storedUser))
+        setToken(storedToken)
+      } catch (error) {
+        // Si les données sont corrompues, nettoyer
+        localStorage.removeItem("eduGradesUser")
+        localStorage.removeItem("eduGradesToken")
+      }
     }
     setIsLoading(false)
   }, [])
@@ -83,12 +90,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const logout = () => {
+  const logout = (showMessage = true) => {
     setUser(null)
     setToken(null)
     localStorage.removeItem("eduGradesUser")
     localStorage.removeItem("eduGradesToken")
-    toast.info('Vous avez été déconnecté')
+    if (showMessage) {
+      toast.info('Vous avez été déconnecté')
+    }
   }
 
   return <AuthContext.Provider value={{ user, login, logout, isLoading, token }}>{children}</AuthContext.Provider>

@@ -1,32 +1,97 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts"
-import { Download, TrendingUp, BookOpen, Award, Calendar } from "lucide-react"
-
-const gradeData = [
-  { subject: "Mathématiques", grade: 16.5, coefficient: 3, color: "bg-chart-1" },
-  { subject: "Physique", grade: 14.2, coefficient: 2, color: "bg-chart-2" },
-  { subject: "Chimie", grade: 15.8, coefficient: 2, color: "bg-chart-3" },
-  { subject: "Français", grade: 13.5, coefficient: 2, color: "bg-chart-4" },
-  { subject: "Anglais", grade: 17.2, coefficient: 1, color: "bg-chart-5" },
-]
-
-const progressData = [
-  { month: "Sept", average: 12.5 },
-  { month: "Oct", average: 13.2 },
-  { month: "Nov", average: 14.1 },
-  { month: "Déc", average: 15.3 },
-  { month: "Jan", average: 15.8 },
-]
+import { Download, TrendingUp, BookOpen, Award } from "lucide-react"
+import { useAuth } from "@/contexts/auth-context"
+import { api } from "@/lib/api"
+import { toast } from "sonner"
+import { useEvaluations } from "@/hooks/useEvaluations"
 
 export function StudentDashboard() {
-  const overallAverage =
-    gradeData.reduce((sum, item) => sum + item.grade * item.coefficient, 0) /
-    gradeData.reduce((sum, item) => sum + item.coefficient, 0)
+  const { user, token } = useAuth()
+  const { evaluations } = useEvaluations()
+  const [studentGrades, setStudentGrades] = useState<any[]>([])
+  const [filteredGrades, setFilteredGrades] = useState<any[]>([])
+  const [selectedEvaluation, setSelectedEvaluation] = useState<string>("all")
+  const [ranking, setRanking] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchStudentGrades = async () => {
+      if (!user?.id) return
+      
+      try {
+        setLoading(true)
+        const [grades, rankingData] = await Promise.all([
+          api.get(`/api/grades/students/${user.id}/grades`),
+          api.get(`/api/students/${user.id}/ranking`)
+        ])
+        setStudentGrades(grades)
+        setFilteredGrades(grades)
+        setRanking(rankingData)
+      } catch (error) {
+        console.error('Erreur lors du chargement des données:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchStudentGrades()
+  }, [user])
+
+  useEffect(() => {
+    if (selectedEvaluation === "all") {
+      setFilteredGrades(studentGrades)
+    } else {
+      setFilteredGrades(studentGrades.filter(grade => 
+        grade.evaluation.id.toString() === selectedEvaluation
+      ))
+    }
+  }, [selectedEvaluation, studentGrades])
+
+  const downloadTranscript = async () => {
+    if (!user?.id || !selectedEvaluation) {
+      toast.error('Veuillez sélectionner une évaluation')
+      return
+    }
+    
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/transcripts/students/${user.id}/evaluations/${selectedEvaluation}/download`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `releve-notes-${user.firstName}-${user.lastName}-evaluation-${selectedEvaluation}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        toast.success('Relevé téléchargé avec succès')
+      } else {
+        toast.error('Erreur lors du téléchargement')
+      }
+    } catch (error) {
+      console.error('Erreur lors du téléchargement:', error)
+      toast.error('Erreur lors du téléchargement')
+    }
+  }
+
+  const overallAverage = ranking?.studentAverage || (
+    filteredGrades.length > 0
+      ? filteredGrades.reduce((sum, item) => sum + item.noteValue, 0) / filteredGrades.length
+      : 0
+  )
 
   return (
     <div className="space-y-6">
@@ -38,10 +103,11 @@ export function StudentDashboard() {
             <Award className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-primary">{overallAverage.toFixed(1)}/20</div>
+            <div className="text-2xl font-bold text-primary">
+              {overallAverage > 0 ? `${overallAverage.toFixed(1)}/20` : '-'}
+            </div>
             <p className="text-xs text-muted-foreground">
-              <TrendingUp className="inline h-3 w-3 mr-1" />
-              +0.5 ce mois
+              {filteredGrades.length} note(s)
             </p>
           </CardContent>
         </Card>
@@ -52,7 +118,7 @@ export function StudentDashboard() {
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{gradeData.length}</div>
+            <div className="text-2xl font-bold">{filteredGrades.length}</div>
             <p className="text-xs text-muted-foreground">Évaluées ce semestre</p>
           </CardContent>
         </Card>
@@ -63,107 +129,124 @@ export function StudentDashboard() {
             <Award className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">8/32</div>
+            <div className="text-2xl font-bold">
+              {ranking ? `${ranking.studentRank}/${ranking.totalStudents}` : '-'}
+            </div>
             <p className="text-xs text-muted-foreground">Dans la classe</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Prochain Examen</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Moyenne Classe</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">3j</div>
-            <p className="text-xs text-muted-foreground">Mathématiques</p>
+            <div className="text-2xl font-bold text-accent">
+              {ranking ? `${ranking.classAverage}/20` : '-'}
+            </div>
+            <p className="text-xs text-muted-foreground">Moyenne générale</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Grades by Subject */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Notes par Matière</CardTitle>
-              <CardDescription>Semestre en cours</CardDescription>
-            </div>
-            <Select defaultValue="current">
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="current">Semestre 1</SelectItem>
-                <SelectItem value="previous">Semestre 2</SelectItem>
-              </SelectContent>
-            </Select>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {gradeData.map((item, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-3 h-3 rounded-full ${item.color}`} />
-                    <span className="font-medium">{item.subject}</span>
-                    <Badge variant="outline" className="text-xs">
-                      Coef. {item.coefficient}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="font-bold text-lg">{item.grade}</span>
-                    <span className="text-muted-foreground">/20</span>
-                  </div>
-                </div>
+      {/* Grades by Subject */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Notes par Matière</CardTitle>
+            <CardDescription>Filtrer par évaluation</CardDescription>
+          </div>
+          <Select value={selectedEvaluation} onValueChange={setSelectedEvaluation}>
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toutes les évaluations</SelectItem>
+              {evaluations.map((evaluation) => (
+                <SelectItem key={evaluation.id} value={evaluation.id.toString()}>
+                  {evaluation.name} ({evaluation.typeEvaluation})
+                </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="text-center py-4">Chargement des notes...</div>
+          ) : filteredGrades.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {selectedEvaluation === "all" ? "Aucune note disponible" : "Aucune note pour cette évaluation"}
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Progress Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Évolution des Résultats</CardTitle>
-            <CardDescription>Moyenne mensuelle</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={progressData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis domain={[10, 20]} />
-                <Tooltip />
-                <Line
-                  type="monotone"
-                  dataKey="average"
-                  stroke="hsl(var(--chart-1))"
-                  strokeWidth={3}
-                  dot={{ fill: "hsl(var(--chart-1))", strokeWidth: 2, r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredGrades.map((grade, index) => {
+                const colors = [
+                  "bg-blue-500", "bg-green-500", "bg-purple-500", "bg-orange-500", 
+                  "bg-pink-500", "bg-indigo-500", "bg-teal-500", "bg-red-500", "bg-yellow-500"
+                ]
+                const colorIndex = index % colors.length
+                
+                return (
+                  <div key={index} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-3 h-3 rounded-full ${colors[colorIndex]}`} />
+                      <span className="font-medium text-base">{grade.subjectName}</span>
+                      <Badge variant="secondary" className="text-xs">
+                        {grade.evaluation.type}
+                      </Badge>
+                      {grade.comment && grade.comment !== "RAS" && (
+                        <Badge variant="outline" className="text-xs max-w-32 truncate" title={grade.comment}>
+                          {grade.comment}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Badge 
+                        variant={grade.noteValue >= 16 ? "default" : grade.noteValue >= 12 ? "secondary" : "destructive"}
+                        className="text-sm font-bold px-3 py-1"
+                      >
+                        {grade.noteValue}/20
+                      </Badge>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Actions */}
       <Card>
         <CardHeader>
-          <CardTitle>Actions Rapides</CardTitle>
-          <CardDescription>Téléchargez vos documents et consultez vos résultats</CardDescription>
+          <CardTitle>Télécharger Relevé de Notes</CardTitle>
+          <CardDescription>Sélectionnez une évaluation pour télécharger votre relevé</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-3">
-            <Button className="flex items-center space-x-2">
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Évaluation</label>
+              <Select value={selectedEvaluation} onValueChange={setSelectedEvaluation}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner une évaluation" />
+                </SelectTrigger>
+                <SelectContent>
+                  {evaluations.map((evaluation) => (
+                    <SelectItem key={evaluation.id} value={evaluation.id.toString()}>
+                      {evaluation.name} ({evaluation.typeEvaluation})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button 
+              className="w-full flex items-center space-x-2" 
+              onClick={downloadTranscript}
+              disabled={!selectedEvaluation}
+            >
               <Download className="w-4 h-4" />
-              <span>Relevé de Notes PDF</span>
-            </Button>
-            <Button variant="outline" className="flex items-center space-x-2 bg-transparent">
-              <BookOpen className="w-4 h-4" />
-              <span>Bulletins Précédents</span>
-            </Button>
-            <Button variant="outline" className="flex items-center space-x-2 bg-transparent">
-              <Calendar className="w-4 h-4" />
-              <span>Planning des Examens</span>
+              <span>Télécharger Relevé PDF</span>
             </Button>
           </div>
         </CardContent>

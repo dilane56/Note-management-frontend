@@ -3,6 +3,7 @@ package org.kfokam48.notemanagementbackend.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.kfokam48.notemanagementbackend.dto.classes.ClassResponseDTO;
+import org.kfokam48.notemanagementbackend.dto.subject.SubjectResponseDTO;
 import org.kfokam48.notemanagementbackend.dto.teacher.TeacherClassDTO;
 import org.kfokam48.notemanagementbackend.dto.teacher.TeacherDTO;
 import org.kfokam48.notemanagementbackend.dto.teacher.TeacherResponseDTO;
@@ -59,7 +60,7 @@ public class TeacherController {
 //    }
 
     @Operation(summary = "Assigner une matière à un enseignant")
-    @PatchMapping("/teachers/{teacherId}/assign-subject/{subjectId}")
+    @PatchMapping("/{teacherId}/assign-subject/{subjectId}")
     public ResponseEntity<TeacherResponseDTO> assignSubjectToTeacher(
             @PathVariable Long teacherId,
             @PathVariable Long subjectId) {
@@ -69,9 +70,22 @@ public class TeacherController {
 
 
     @Operation(summary = "Lister les classes d’un enseignant")
-    @GetMapping("/teachers/{teacherId}/classes")
-    public ResponseEntity<List<TeacherClassDTO>> getClassesForTeacher(@PathVariable Long teacherId) {
+    @GetMapping("/{teacherId}/classes")
+    public ResponseEntity<List<ClassResponseDTO>> getClassesForTeacher(@PathVariable Long teacherId) {
         return ResponseEntity.ok(teacherService.getTeacherClasses(teacherId));
+    }
+
+    @GetMapping("/{teacherId}/subjects")
+    public ResponseEntity<List<SubjectResponseDTO>> getTeacherSubjects(@PathVariable Long teacherId) {
+        return ResponseEntity.ok(teacherService.getTeacherSubjects(teacherId));
+    }
+
+    @PatchMapping("/{teacherId}/subjects/{subjectId}/coefficient")
+    public ResponseEntity<SubjectResponseDTO> updateSubjectCoefficient(
+            @PathVariable Long teacherId,
+            @PathVariable Long subjectId,
+            @RequestParam double coefficient) {
+        return ResponseEntity.ok(teacherService.updateSubjectCoefficient(teacherId, subjectId, coefficient));
     }
 
 }

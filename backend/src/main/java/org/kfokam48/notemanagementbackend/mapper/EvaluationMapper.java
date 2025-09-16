@@ -20,8 +20,8 @@ public class EvaluationMapper {
 
     public Evaluation evaluationDTOToEvaluation(EvaluationDTO evaluationDTO) {
         Evaluation evaluation = modelMapper.map(evaluationDTO, Evaluation.class);
-        evaluation.setTypeEvaluationName(evaluationDTO.getTypeEvaluationName());
-        evaluation.setSessionEvaluation(evaluationDTO.getSessionEvaluation());
+        evaluation.setType(evaluationDTO.getType());
+        evaluation.setAnneeAcademique(evaluationDTO.getAnneeAcademique());
         return evaluation;
 
 
@@ -29,8 +29,8 @@ public class EvaluationMapper {
 
     public EvaluationReponseDTO evaluationToEvaluationReponseDTO(Evaluation evaluation) {
         EvaluationReponseDTO evaluationReponseDTO = modelMapper.map(evaluation, EvaluationReponseDTO.class);
-       evaluationReponseDTO.setTypeEvaluationName(evaluation.getTypeEvaluationName());
-        evaluationReponseDTO.setSessionEvaluation(evaluation.getSessionEvaluation());
+       evaluationReponseDTO.setAnneeAcademique(evaluation.getAnneeAcademique());
+        evaluationReponseDTO.setTypeEvaluation(evaluation.getType());
         return evaluationReponseDTO;
     }
 

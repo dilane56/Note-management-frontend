@@ -1,11 +1,10 @@
 package org.kfokam48.notemanagementbackend.mapper;
 
 import org.kfokam48.notemanagementbackend.dto.classes.StudentInClassDTo;
-import org.kfokam48.notemanagementbackend.dto.grade.EvaluationInGradeDTO;
 import org.kfokam48.notemanagementbackend.dto.grade.GradeRequestDTO;
 import org.kfokam48.notemanagementbackend.dto.grade.GradeResponseDTO;
 import org.kfokam48.notemanagementbackend.exception.RessourceNotFoundException;
-import org.kfokam48.notemanagementbackend.model.Evaluation;
+import org.kfokam48.notemanagementbackend.exception.InvalidGradeValueException;
 import org.kfokam48.notemanagementbackend.model.Grade;
 import org.kfokam48.notemanagementbackend.model.Student;
 import org.kfokam48.notemanagementbackend.repository.EvaluationRepository;
@@ -33,10 +32,16 @@ public class GradeMapper {
     public Grade gradeRequestDTOToGrade(GradeRequestDTO gradeRequestDTO) {
         Grade grade = new Grade();
         grade.setComment("RAS");
+        var subject = subjectRepository.findById(gradeRequestDTO.getSubjectID()).orElseThrow(()->new RessourceNotFoundException("Subject not found"));
+        
+        if (gradeRequestDTO.getNoteValue() > subject.getNoteMaximale()) {
+            throw new InvalidGradeValueException("La note " + gradeRequestDTO.getNoteValue() + " dépasse la note maximale autorisée de " + subject.getNoteMaximale() + " pour la matière " + subject.getName());
+        }
+        
         grade.setValue(gradeRequestDTO.getNoteValue());
       //  grade.setNoteMaximale(gradeRequestDTO.getNoteMaximale());
         grade.setStudent(studentRepository.findById(gradeRequestDTO.getStudentID()).orElseThrow(()->new RessourceNotFoundException("Student not found")));
-        grade.setSubject(subjectRepository.findById(gradeRequestDTO.getSubjectID()).orElseThrow(()->new RessourceNotFoundException("Subject not found")));
+        grade.setSubject(subject);
         grade.setEvaluation(evaluationRepository.findById(gradeRequestDTO.getEvaluationId()).orElseThrow(()->new RessourceNotFoundException("Evaluation not found")));
         return grade;
     }
@@ -48,31 +53,22 @@ public class GradeMapper {
         gradeResponseDTO.setNoteValue(grade.getValue());
         gradeResponseDTO.setSubjectName(grade.getSubject().getName());
         gradeResponseDTO.setStudent(studentToStudentInClassDTo(grade.getStudent()));
-        gradeResponseDTO.setEvaluation(evaluationToEvaluationInGradeDTO(grade.getEvaluation()));
+        gradeResponseDTO.setEvaluation(grade.getEvaluation());
         return gradeResponseDTO;
     }
 
     public StudentInClassDTo studentToStudentInClassDTo(Student student) {
         StudentInClassDTo studentInClassDTo = new StudentInClassDTo();
+        studentInClassDTo.setStudentId(student.getId());
         studentInClassDTo.setStudentFirstName(student.getFirstName());
         studentInClassDTo.setStudentLastName(student.getLastName());
         studentInClassDTo.setStudentMatricule(student.getMatricule());
         return studentInClassDTo;
-
     }
 
-    public EvaluationInGradeDTO evaluationToEvaluationInGradeDTO(Evaluation evaluation) {
-        if(evaluation == null) {
-            return null;
-        }else{
-            EvaluationInGradeDTO evaluationInGradeDTO = new EvaluationInGradeDTO();
-            evaluationInGradeDTO.setSessionEvaluation(evaluation.getSessionEvaluation());
-           // evaluationInGradeDTO.setNumeroEvaluation(evaluation.getNumeroEvaluation());
-            evaluationInGradeDTO.setTypeEvaluationName(evaluation.getTypeEvaluationName());
-            return evaluationInGradeDTO;
-        }
 
-    }
+
+
 
     public List<GradeResponseDTO> gradesToGradeResponseDTO(List<Grade> grades) {
         List<GradeResponseDTO> gradeResponseDTOs = new ArrayList<>();

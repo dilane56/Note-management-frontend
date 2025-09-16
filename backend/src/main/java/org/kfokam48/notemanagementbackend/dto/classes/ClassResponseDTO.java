@@ -7,7 +7,7 @@ import java.util.List;
 public class ClassResponseDTO {
     private Long id;
     private String className;
-    private String FiliereName;
     private Long filiereId;
+    private String FiliereName;
     private List<StudentInClassDTo> students;
 }

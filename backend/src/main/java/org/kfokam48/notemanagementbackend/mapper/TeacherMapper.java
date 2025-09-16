@@ -4,6 +4,7 @@ import org.kfokam48.notemanagementbackend.dto.teacher.TeacherClassDTO;
 import org.kfokam48.notemanagementbackend.dto.teacher.TeacherDTO;
 import org.kfokam48.notemanagementbackend.dto.teacher.TeacherResponseDTO;
 import org.kfokam48.notemanagementbackend.dto.teacher.TeacherSubject;
+import org.kfokam48.notemanagementbackend.enums.Roles;
 import org.kfokam48.notemanagementbackend.model.Class;
 import org.kfokam48.notemanagementbackend.model.Subject;
 import org.kfokam48.notemanagementbackend.model.Teacher;
@@ -35,7 +36,7 @@ public class TeacherMapper {
         teacherResponseDTO.setFirstName(teacher.getFirstName());
         teacherResponseDTO.setLastName(teacher.getLastName());
         teacherResponseDTO.setEmail(teacher.getEmail());
-        teacherResponseDTO.setPassword(teacher.getPassword());
+        teacherResponseDTO.setRole(Roles.TEACHER);
         List<TeacherSubject> teacherSubjects = new ArrayList<>(subjectToteacherSubjects(teacher.getSubjects()));
         teacherResponseDTO.setTeacherSubjects(teacherSubjects);
         return teacherResponseDTO;
