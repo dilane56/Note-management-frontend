@@ -179,9 +179,9 @@ export function UserManagement() {
                 <TableHead>Nom</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Rôle</TableHead>
-                <TableHead>Détails</TableHead>
+               
                 <TableHead>Statut</TableHead>
-                <TableHead>Créé le</TableHead>
+               
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -207,11 +207,11 @@ export function UserManagement() {
                     <TableCell>
                       <Badge variant="outline">{getRoleLabel(user.role)}</Badge>
                     </TableCell>
-                    <TableCell>-</TableCell>
+                  
                     <TableCell>
                       <Badge variant="default">Actif</Badge>
                     </TableCell>
-                    <TableCell>-</TableCell>
+                    
                     <TableCell>
                       <div className="flex space-x-2">
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(user)}>
