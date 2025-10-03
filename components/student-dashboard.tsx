@@ -5,11 +5,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Download, TrendingUp, BookOpen, Award } from "lucide-react"
+import { Download, TrendingUp, BookOpen, Award, BarChart3, List } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { api } from "@/lib/api"
 import { toast } from "sonner"
 import { useEvaluations } from "@/hooks/useEvaluations"
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts"
 
 export function StudentDashboard() {
   const { user, token } = useAuth()
@@ -19,6 +20,7 @@ export function StudentDashboard() {
   const [selectedEvaluation, setSelectedEvaluation] = useState<string>("all")
   const [ranking, setRanking] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState<'list' | 'chart'>('list')
 
   useEffect(() => {
     const fetchStudentGrades = async () => {
@@ -72,7 +74,7 @@ export function StudentDashboard() {
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `releve-notes-${user.firstName}-${user.lastName}-evaluation-${selectedEvaluation}.pdf`
+        a.download = `releve-notes-${user.name}-evaluation-${selectedEvaluation}.pdf`
         document.body.appendChild(a)
         a.click()
         window.URL.revokeObjectURL(url)
@@ -157,19 +159,35 @@ export function StudentDashboard() {
             <CardTitle>Notes par Matière</CardTitle>
             <CardDescription>Filtrer par évaluation</CardDescription>
           </div>
-          <Select value={selectedEvaluation} onValueChange={setSelectedEvaluation}>
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Toutes les évaluations</SelectItem>
-              {evaluations.map((evaluation) => (
-                <SelectItem key={evaluation.id} value={evaluation.id.toString()}>
-                  {evaluation.name} ({evaluation.typeEvaluation})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={viewMode === 'list' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setViewMode('list')}
+            >
+              <List className="w-4 h-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'chart' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setViewMode('chart')}
+            >
+              <BarChart3 className="w-4 h-4" />
+            </Button>
+            <Select value={selectedEvaluation} onValueChange={setSelectedEvaluation}>
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les évaluations</SelectItem>
+                {evaluations.map((evaluation) => (
+                  <SelectItem key={evaluation.id} value={evaluation.id.toString()}>
+                    {evaluation.name} ({evaluation.typeEvaluation})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -178,7 +196,7 @@ export function StudentDashboard() {
             <div className="text-center py-8 text-muted-foreground">
               {selectedEvaluation === "all" ? "Aucune note disponible" : "Aucune note pour cette évaluation"}
             </div>
-          ) : (
+          ) : viewMode === 'list' ? (
             <div className="space-y-4">
               {filteredGrades.map((grade, index) => {
                 const colors = [
@@ -212,6 +230,62 @@ export function StudentDashboard() {
                   </div>
                 )
               })}
+            </div>
+          ) : (
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart 
+                  data={filteredGrades.map((grade, index) => ({
+                    name: grade.subjectName.length > 10 ? grade.subjectName.substring(0, 10) + '...' : grade.subjectName,
+                    note: grade.noteValue,
+                    fullName: grade.subjectName,
+                    fill: grade.noteValue >= 16 ? "#22c55e" : 
+                          grade.noteValue >= 12 ? "#3b82f6" : 
+                          grade.noteValue >= 10 ? "#f59e0b" : "#ef4444"
+                  }))}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis 
+                    dataKey="name" 
+                    angle={-45}
+                    textAnchor="end"
+                    height={80}
+                    fontSize={12}
+                    stroke="#6b7280"
+                  />
+                  <YAxis 
+                    domain={[0, 20]} 
+                    stroke="#6b7280"
+                  />
+                  <Tooltip 
+                    contentStyle={{
+                      backgroundColor: '#1f2937',
+                      border: '1px solid #374151',
+                      borderRadius: '6px',
+                      color: '#f9fafb'
+                    }}
+                    labelStyle={{ color: '#f9fafb' }}
+                    formatter={(value: any, name: any, props: any) => [
+                      `${value}/20`, 
+                      props.payload.fullName
+                    ]}
+                  />
+                  <Bar 
+                    dataKey="note" 
+                    radius={[4, 4, 0, 0]}
+                  >
+                    {filteredGrades.map((grade, index) => (
+                      <Cell 
+                        key={index} 
+                        fill={grade.noteValue >= 16 ? "#22c55e" : 
+                              grade.noteValue >= 12 ? "#3b82f6" : 
+                              grade.noteValue >= 10 ? "#f59e0b" : "#ef4444"}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           )}
         </CardContent>
