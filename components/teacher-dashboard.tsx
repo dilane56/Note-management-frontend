@@ -26,28 +26,55 @@ import { MyClasses } from "./teacher/my-classes"
 import { useAuth } from "@/contexts/auth-context"
 import { getTeacherClasses } from "@/lib/teacher-api"
 import { getTeacherSubjects } from "@/lib/teacher-api"
-
-
+import { api } from "@/lib/api"
 
 export function TeacherDashboard() {
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const [activeSection, setActiveSection] = useState("dashboard")
   const [classes, setClasses] = useState<any[]>([])
   const [subjects, setSubjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<any>(null)
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-      if (!user?.id) return
+      console.log('User:', user)
+      console.log('Token présent:', !!token)
+      console.log('Token dans localStorage:', !!localStorage.getItem('eduGradesToken'))
+      
+      if (!user?.id) {
+        console.log('Pas d\'utilisateur connecté')
+        return
+      }
       
       try {
         setLoading(true)
+        
+        // Charger les données de base
         const [classesData, subjectsData] = await Promise.all([
           getTeacherClasses(user.id),
           getTeacherSubjects(user.id)
         ])
+        
         setClasses(classesData)
         setSubjects(subjectsData)
+        
+        // Essayer de charger les statistiques (optionnel)
+        try {
+          console.log('Tentative de chargement des statistiques pour teacherId:', user.id)
+          console.log('Token utilisé pour stats:', localStorage.getItem('eduGradesToken')?.substring(0, 20) + '...')
+          const statsData = await api.get(`/api/statistics/teacher/${user.id}/dashboard`)
+          setStats(statsData)
+          console.log("Stats Data:", statsData)
+        } catch (statsError: any) {
+          console.log('Erreur complète:', statsError)
+          console.log('Statistiques non disponibles:', statsError.message || statsError)
+          if (statsError.status === 401) {
+            console.log('Problème d\'authentification pour les statistiques')
+            console.log('Vérifiez que l\'endpoint accepte le rôle TEACHER')
+          }
+        }
+        
       } catch (error) {
         console.error('Erreur lors du chargement des données:', error)
       } finally {
@@ -56,11 +83,12 @@ export function TeacherDashboard() {
     }
     
     fetchDashboardData()
-  }, [user])
+  }, [user, token])
 
-  const totalStudents = classes.reduce((sum, cls) => sum + (cls.students?.length || 0), 0)
-  const totalClasses = classes.length
-  const totalSubjects = subjects.length
+  // Utiliser les statistiques du backend si disponibles, sinon calculer localement
+  const totalStudents = stats?.totalStudents || classes.reduce((sum, cls) => sum + (cls.students?.length || 0), 0)
+  const totalClasses = stats?.totalClasses || classes.length
+  const totalSubjects = stats?.totalSubjects || subjects.length
 
   const renderContent = () => {
     switch (activeSection) {
@@ -104,8 +132,12 @@ export function TeacherDashboard() {
                   <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-primary">-</div>
-                  <p className="text-xs text-muted-foreground">Calcul en cours</p>
+                  <div className="text-2xl font-bold text-primary">
+                    {stats?.globalAverage ? `${stats.globalAverage.toFixed(2)}/20` : '-'}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {stats?.globalAverage ? 'Toutes matières' : 'Aucune donnée'}
+                  </p>
                 </CardContent>
               </Card>
 
@@ -115,7 +147,9 @@ export function TeacherDashboard() {
                   <AlertCircle className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-accent">80%</div>
+                  <div className="text-2xl font-bold text-accent">
+                    {stats?.successRate ? `${stats.successRate.toFixed(2)}%` : '-'}
+                  </div>
                   <p className="text-xs text-muted-foreground">≥ 10/20</p>
                 </CardContent>
               </Card>
@@ -203,8 +237,8 @@ export function TeacherDashboard() {
                               <span className="font-medium">{cls.students?.length || 0}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-sm text-muted-foreground">Moyenne:</span>
-                              <span className="font-medium text-primary">-</span>
+                              <span className="text-sm text-muted-foreground">Matières:</span>
+                              <span className="font-medium">{subjects.length}</span>
                             </div>
                           </div>
                           <Button 

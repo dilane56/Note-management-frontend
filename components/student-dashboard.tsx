@@ -104,7 +104,7 @@ export function StudentDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-primary">
-              {overallAverage > 0 ? `${overallAverage.toFixed(1)}/20` : '-'}
+              {overallAverage > 0 ? `${overallAverage.toFixed(2)}/20` : '-'}
             </div>
             <p className="text-xs text-muted-foreground">
               {filteredGrades.length} note(s)
@@ -143,7 +143,7 @@ export function StudentDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-accent">
-              {ranking ? `${ranking.classAverage}/20` : '-'}
+              {ranking ? `${parseFloat(ranking.classAverage).toFixed(2)}/20` : '-'}
             </div>
             <p className="text-xs text-muted-foreground">Moyenne générale</p>
           </CardContent>

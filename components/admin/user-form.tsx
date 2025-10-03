@@ -89,7 +89,7 @@ export function UserForm({ initialData, classes, onSubmit, isEditing = false }: 
         />
       </div>
       
-      {!isEditing && (
+     
         <div>
           <Label htmlFor="password">Mot de passe</Label>
           <Input 
@@ -100,7 +100,7 @@ export function UserForm({ initialData, classes, onSubmit, isEditing = false }: 
             required 
           />
         </div>
-      )}
+      
       
       <div>
         <Label htmlFor="role">Rôle</Label>

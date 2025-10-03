@@ -294,14 +294,16 @@ export function SubjectManagement() {
                             {teacher.teacherFirstName} {teacher.teacherLastName}
                           </Badge>
                         ))}
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-6 px-2"
-                          onClick={() => setAssigningTeacher({ subjectId: subject.id, subjectName: subject.name })}
-                        >
-                          <UserPlus className="w-3 h-3" />
-                        </Button>
+                        {subject.teachers.length === 0 && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 px-2"
+                            onClick={() => setAssigningTeacher({ subjectId: subject.id, subjectName: subject.name })}
+                          >
+                            <UserPlus className="w-3 h-3" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
