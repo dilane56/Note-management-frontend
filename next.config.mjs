@@ -1,4 +1,3 @@
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
@@ -10,7 +9,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // Pour les appels API cross-origin
   async headers() {
     return [
       {
