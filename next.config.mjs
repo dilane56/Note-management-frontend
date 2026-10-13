@@ -1,24 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Les erreurs TypeScript font échouer le build (elles étaient auparavant ignorées).
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+  // Aucun ESLint n'est configuré dans le projet : la vérification passe par `npm run typecheck`.
   eslint: {
     ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
   },
   images: {
     unoptimized: true,
   },
-  async headers() {
-    return [
-      {
-        source: '/api/:path*',
-        headers: [
-          { key: 'Access-Control-Allow-Origin', value: '*' },
-        ],
-      },
-    ];
-  },
+  poweredByHeader: false,
 }
 
 export default nextConfig

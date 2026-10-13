@@ -1,10 +1,10 @@
-import { apiRequest, LoginRequest, LoginResponse } from './api';
+import { request } from "./api"
+import type { LoginRequest, LoginResponse, TokenInfo } from "./types"
 
 export const authApi = {
-  async login(credentials: LoginRequest): Promise<LoginResponse> {
-    return apiRequest('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(credentials),
-    })
-  }
-};
+  login: (credentials: LoginRequest) =>
+    request<LoginResponse>("/api/auth/login", { method: "POST", body: credentials, auth: false }),
+
+  /** Vérifie le token stocké ; lève une ApiError 401 s'il est expiré ou invalide. */
+  validateToken: () => request<TokenInfo>("/api/auth/validate-token"),
+}

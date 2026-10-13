@@ -1,176 +1,147 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Edit, Loader2, Search, Trash2, UserPlus } from "lucide-react"
+import { ConfirmDialog, ErrorState, SectionHeader, TableStateRow, useConfirmDelete } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { UserPlus, Edit, Trash2, Search, Loader2 } from "lucide-react"
+import { useAuth } from "@/contexts/auth-context"
+import { runAction } from "@/hooks/useAsync"
 import { useUsers } from "@/hooks/useUsers"
-import { UserForm } from "./user-form"
-import { toast } from "sonner"
+import { fullName, normalize, roleLabel } from "@/lib/format"
+import type { Role, StudentPayload, UserPayload, UserResponse } from "@/lib/types"
+import { userApi } from "@/lib/user-api"
+import { UserForm, type UserFormValues } from "./user-form"
 
-interface EditingUser {
-  id: number
-  firstName: string
-  lastName: string
-  email: string
-  role: 'ADMIN' | 'STUDENT' | 'TEACHER'
-  studentClassId?: number
-}
+type DialogState = { mode: "create" } | { mode: "edit"; user: UserResponse; values: UserFormValues } | null
 
 export function UserManagement() {
-  const { users, classes, loading, createUser, updateUser, deleteUser } = useUsers()
+  const { user: currentUser } = useAuth()
+  const { users, classes, loading, error, reload, createUser, updateUser, deleteUser } = useUsers()
   const [searchTerm, setSearchTerm] = useState("")
-  const [roleFilter, setRoleFilter] = useState("all")
-  const [isAddingUser, setIsAddingUser] = useState(false)
-  const [editingUser, setEditingUser] = useState<EditingUser | null>(null)
+  const [roleFilter, setRoleFilter] = useState<"all" | Role>("all")
+  const [dialog, setDialog] = useState<DialogState>(null)
+  const [loadingEditId, setLoadingEditId] = useState<number | null>(null)
+  const confirmDelete = useConfirmDelete<UserResponse>()
 
-  const filteredUsers = users.filter((user) => {
-    const fullName = `${user.firstName} ${user.lastName}`
-    const matchesSearch =
-      fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesRole = roleFilter === "all" || user.role.toLowerCase() === roleFilter
-    return matchesSearch && matchesRole
-  })
+  const term = normalize(searchTerm)
+  const filteredUsers = users
+    .filter((user) => {
+      const matchesSearch = normalize(fullName(user)).includes(term) || normalize(user.email).includes(term)
+      const matchesRole = roleFilter === "all" || user.role === roleFilter
+      return matchesSearch && matchesRole
+    })
+    .sort((a, b) => a.lastName.localeCompare(b.lastName, "fr") || a.firstName.localeCompare(b.firstName, "fr"))
 
-  const getRoleLabel = (role: string | null | undefined) => {
-    if (!role) return 'Non défini'
-    
-    switch (role.toUpperCase()) {
-      case "ADMIN":
-        return "Administrateur"
-      case "TEACHER":
-        return "Enseignant"
-      case "STUDENT":
-        return "Étudiant"
-      default:
-        return role
-    }
-  }
-
-  const handleCreateUser = async (formData: any) => {
-    const success = await createUser(formData)
-    if (success) {
-      setIsAddingUser(false)
-    }
-    return success
-  }
-
-  const handleUpdateUser = async (formData: any) => {
-    if (!editingUser) return false
-    const success = await updateUser(editingUser.id, formData)
-    if (success) {
-      setEditingUser(null)
-    }
-    return success
-  }
-
-  const openAddDialog = () => {
-    setEditingUser(null)
-    setIsAddingUser(true)
-  }
-
-  const handleEdit = (user: any) => {
-    setEditingUser({
-      id: user.id,
+  const handleEdit = async (user: UserResponse) => {
+    const values: UserFormValues = {
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
-      role: user.role
-    })
-  }
-
-  const handleDelete = async (id: number) => {
-    if (confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) {
-      await deleteUser(id)
+      role: user.role,
     }
+    if (user.role === "STUDENT") {
+      // La liste des utilisateurs ne contient pas la classe : on la récupère avant d'ouvrir le formulaire.
+      setLoadingEditId(user.id)
+      const { ok, result } = await runAction(() => userApi.getStudent(user.id), undefined, "Impossible de charger l'étudiant")
+      setLoadingEditId(null)
+      if (!ok || !result) return
+      values.studentClassId = result.studentClass?.classId
+      values.matricule = result.matricule
+    }
+    setDialog({ mode: "edit", user, values })
   }
 
-
+  const handleSubmit = async (role: Role, payload: UserPayload | StudentPayload) => {
+    const ok =
+      dialog?.mode === "edit" ? await updateUser(role, dialog.user.id, payload) : await createUser(role, payload)
+    if (ok) setDialog(null)
+    return ok
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold">Gestion des Utilisateurs</h2>
-          <p className="text-muted-foreground">Gérez les comptes étudiants, enseignants et administrateurs</p>
-        </div>
-        <Dialog open={isAddingUser || !!editingUser} onOpenChange={(open) => {
-          if (!open) {
-            setIsAddingUser(false)
-            setEditingUser(null)
-          }
-        }}>
-          <DialogTrigger asChild>
-            <Button className="flex items-center space-x-2" onClick={openAddDialog}>
-              <UserPlus className="w-4 h-4" />
-              <span>Nouvel Utilisateur</span>
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingUser ? 'Modifier l\'utilisateur' : 'Créer un Utilisateur'}</DialogTitle>
-              <DialogDescription>
-                {editingUser ? 'Modifiez les informations de l\'utilisateur' : 'Ajoutez un nouvel étudiant, enseignant ou administrateur'}
-              </DialogDescription>
-            </DialogHeader>
-            <UserForm
-              initialData={editingUser || undefined}
-              classes={classes}
-              onSubmit={editingUser ? handleUpdateUser : handleCreateUser}
-              isEditing={!!editingUser}
-            />
-          </DialogContent>
-        </Dialog>
-      </div>
+      <SectionHeader
+        title="Gestion des utilisateurs"
+        description="Comptes étudiants, enseignants et administrateurs"
+        actions={
+          <Button onClick={() => setDialog({ mode: "create" })}>
+            <UserPlus className="w-4 h-4 mr-2" />
+            Nouvel utilisateur
+          </Button>
+        }
+      />
 
-      {/* Filters */}
+      <Dialog open={dialog !== null} onOpenChange={(open) => !open && setDialog(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{dialog?.mode === "edit" ? "Modifier l'utilisateur" : "Créer un utilisateur"}</DialogTitle>
+            <DialogDescription>
+              {dialog?.mode === "edit"
+                ? `${fullName(dialog.user)} — ${roleLabel(dialog.user.role)}`
+                : "Ajoutez un étudiant, un enseignant ou un administrateur"}
+            </DialogDescription>
+          </DialogHeader>
+          {dialog && (
+            <UserForm
+              key={dialog.mode === "edit" ? dialog.user.id : "new"}
+              initialData={dialog.mode === "edit" ? dialog.values : undefined}
+              classes={classes}
+              onSubmit={handleSubmit}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        {...confirmDelete.dialogProps}
+        title="Supprimer l'utilisateur"
+        description={
+          confirmDelete.target?.role === "STUDENT"
+            ? `Supprimer ${fullName(confirmDelete.target)} ? Ses notes et relevés seront définitivement supprimés.`
+            : `Supprimer ${fullName(confirmDelete.target)} ? Cette action est définitive.`
+        }
+        onConfirm={() => confirmDelete.target && deleteUser(confirmDelete.target.id)}
+      />
+
+      {error && <ErrorState message={error} onRetry={reload} />}
+
       <Card>
         <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Rechercher par nom ou email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
+          <div className="flex flex-col gap-4 sm:flex-row">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
+              <Input
+                placeholder="Rechercher par nom ou email..."
+                aria-label="Rechercher un utilisateur"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
             </div>
-            <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger className="w-48">
+            <Select value={roleFilter} onValueChange={(value) => setRoleFilter(value as "all" | Role)}>
+              <SelectTrigger className="sm:w-48" aria-label="Filtrer par rôle">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les rôles</SelectItem>
-                <SelectItem value="student">Étudiants</SelectItem>
-                <SelectItem value="teacher">Enseignants</SelectItem>
-                <SelectItem value="admin">Administrateurs</SelectItem>
+                <SelectItem value="STUDENT">Étudiants</SelectItem>
+                <SelectItem value="TEACHER">Enseignants</SelectItem>
+                <SelectItem value="ADMIN">Administrateurs</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </CardContent>
       </Card>
 
-      {/* Users Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Liste des Utilisateurs ({filteredUsers.length})</CardTitle>
+          <CardTitle>Liste des utilisateurs ({filteredUsers.length})</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
@@ -179,56 +150,50 @@ export function UserManagement() {
                 <TableHead>Nom</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Rôle</TableHead>
-               
-                <TableHead>Statut</TableHead>
-               
-                <TableHead>Actions</TableHead>
+                <TableHead className="w-28 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto" />
-                    <p className="mt-2">Chargement...</p>
-                  </TableCell>
-                </TableRow>
-              ) : filteredUsers.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
-                    Aucun utilisateur trouvé
-                  </TableCell>
-                </TableRow>
+              {loading || filteredUsers.length === 0 ? (
+                <TableStateRow colSpan={4} loading={loading} emptyLabel="Aucun utilisateur trouvé" />
               ) : (
-                filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.firstName} {user.lastName}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{getRoleLabel(user.role)}</Badge>
-                    </TableCell>
-                  
-                    <TableCell>
-                      <Badge variant="default">Actif</Badge>
-                    </TableCell>
-                    
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Button variant="ghost" size="sm" onClick={() => handleEdit(user)}>
-                          <Edit className="w-4 h-4" />
+                filteredUsers.map((user) => {
+                  const isSelf = user.id === currentUser?.id
+                  return (
+                    <TableRow key={user.id}>
+                      <TableCell className="font-medium">
+                        {fullName(user)}
+                        {isSelf && <span className="ml-2 text-xs text-muted-foreground">(vous)</span>}
+                      </TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{roleLabel(user.role)}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(user)}
+                          disabled={loadingEditId === user.id}
+                          aria-label={`Modifier ${fullName(user)}`}
+                        >
+                          {loadingEditId === user.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Edit className="w-4 h-4" />}
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           className="text-destructive"
-                          onClick={() => handleDelete(user.id)}
+                          onClick={() => confirmDelete.ask(user)}
+                          disabled={isSelf}
+                          title={isSelf ? "Vous ne pouvez pas supprimer votre propre compte" : undefined}
+                          aria-label={`Supprimer ${fullName(user)}`}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
               )}
             </TableBody>
           </Table>

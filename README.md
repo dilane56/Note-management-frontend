@@ -1,30 +1,77 @@
-# Note management frontend
+# EduGrades — frontend
 
-*Automatically synced with your [v0.app](https://v0.app) deployments*
+Interface web de gestion des notes (Next.js 14, React 18, TypeScript, Tailwind CSS 4, composants Radix/shadcn).
+Elle consomme l'API du backend Spring Boot (`../NOTE-MANAGEMENT-BACKEND`).
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/kamgaingfotso-gmailcoms-projects/v0-note-management-frontend)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/projects/45yBPcCOtUD)
+## Démarrage
 
-## Overview
+Prérequis : Node.js 18.18 ou plus récent, et le backend démarré (port 8080 par défaut).
 
-This repository will stay in sync with your deployed chats on [v0.app](https://v0.app).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.app](https://v0.app).
+```bash
+npm ci
+cp .env.example .env.local   # puis adapter NEXT_PUBLIC_API_URL si besoin
+npm run dev                  # http://localhost:3000
+```
 
-## Deployment
+Le backend doit autoriser l'origine du frontend (`CORS_ALLOWED_ORIGINS`, par défaut `http://localhost:3000,http://localhost:3001`).
 
-Your project is live at:
+## Scripts
 
-**[https://vercel.com/kamgaingfotso-gmailcoms-projects/v0-note-management-frontend](https://vercel.com/kamgaingfotso-gmailcoms-projects/v0-note-management-frontend)**
+| Commande | Rôle |
+|---|---|
+| `npm run dev` | Serveur de développement |
+| `npm run build` | Build de production (échoue en cas d'erreur TypeScript) |
+| `npm start` | Sert le build de production |
+| `npm run typecheck` | Vérification TypeScript |
+| `npm test` | Tests unitaires (Vitest) |
 
-## Build your app
+## Variables d'environnement
 
-Continue building your app on:
+| Variable | Défaut | Description |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | URL du backend, sans `/` final. Intégrée au build : la redéfinir sur Vercel avant de déployer. |
 
-**[https://v0.app/chat/projects/45yBPcCOtUD](https://v0.app/chat/projects/45yBPcCOtUD)**
+## Fonctionnalités par rôle
 
-## How It Works
+- **Administrateur** :
+  - utilisateurs, filières, classes, matières et évaluations ;
+  - assignation des enseignants ;
+  - relevés PDF par classe (ZIP ou PDF unique) ou par étudiant, et envoi par email ;
+  - exports Excel ;
+  - statistiques.
+- **Enseignant** :
+  - saisie, modification et suppression des notes et commentaires, pour ses matières ;
+  - consultation de ses matières (coefficient modifiable) et de ses classes, avec leurs statistiques.
+- **Étudiant** :
+  - ses notes, sur le barème de la matière et sur 20 ;
+  - sa moyenne et son rang par évaluation ;
+  - relevé PDF et export Excel.
 
-1. Create and modify your project using [v0.app](https://v0.app)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+L'interface n'affiche que ce que le rôle permet ; c'est le backend qui contrôle réellement les droits.
+
+## Organisation du code
+
+```
+app/                page unique, en-tête et navigation par rôle
+components/
+  admin/            écrans de gestion (administrateur)
+  teacher/          saisie des notes, matières, classes (enseignant)
+  student-dashboard.tsx
+  statistics-view.tsx   statistiques d'une classe (admin et enseignant)
+  shared.tsx            composants communs (confirmation, erreurs, sélecteurs…)
+  ui/                   composants de base shadcn
+contexts/auth-context.tsx   session : connexion, vérification du token, déconnexion sur 401
+hooks/              chargement des données (useAsync) et hooks par ressource
+lib/
+  api.ts            client HTTP unique : token, erreurs du backend, téléchargements
+  types.ts          types alignés sur les DTO du backend
+  format.ts         libellés et calculs d'affichage (note sur 20, rang, évaluations)
+  *-api.ts          appels par ressource
+```
+
+## Points à connaître
+
+- **Session.** Le token JWT est conservé dans `localStorage` et vérifié au démarrage (`/api/auth/validate-token`). Toute réponse 401 déconnecte l'utilisateur avec le message « session expirée ».
+- **Erreurs.** Le message renvoyé par le backend (`message` et `fieldErrors`) est affiché tel quel dans les notifications : email déjà utilisé, note en double, suppression impossible, trop de tentatives de connexion…
+- **Notes.** Une note est saisie sur la note maximale de sa matière. Les moyennes et les rangs viennent du backend (moyenne pondérée sur 20). Le frontend ne fait que ramener chaque note sur 20 pour l'affichage.
+- **Déploiement Vercel.** Le projet utilise npm (`package-lock.json`). Pensez à définir `NEXT_PUBLIC_API_URL` dans les variables du projet.

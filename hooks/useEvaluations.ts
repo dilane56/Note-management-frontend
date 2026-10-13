@@ -1,33 +1,31 @@
-import { useState, useEffect } from 'react';
-import { EvaluationResponseDTO } from '@/lib/api';
-import * as evaluationApi from '@/lib/evaluation-api';
+import { evaluationApi } from "@/lib/evaluation-api"
+import { sortEvaluations } from "@/lib/format"
+import type { Evaluation, EvaluationPayload } from "@/lib/types"
+import { runAction, useAsync } from "./useAsync"
 
 export const useEvaluations = () => {
-  const [evaluations, setEvaluations] = useState<EvaluationResponseDTO[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error, reload } = useAsync<Evaluation[]>(
+    async () => sortEvaluations(await evaluationApi.getEvaluations()),
+    [],
+    [],
+  )
 
-  const fetchEvaluations = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await evaluationApi.getAllEvaluations();
-      setEvaluations(data);
-    } catch (err: any) {
-      setError(err.message || 'Erreur lors du chargement des évaluations');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchEvaluations();
-  }, []);
+  const mutate = async (action: () => Promise<unknown>, success: string, failure: string) => {
+    const { ok } = await runAction(action, success, failure)
+    if (ok) await reload()
+    return ok
+  }
 
   return {
-    evaluations,
+    evaluations: data,
     loading,
     error,
-    fetchEvaluations,
-  };
-};
+    reload,
+    createEvaluation: (payload: EvaluationPayload) =>
+      mutate(() => evaluationApi.create(payload), "Évaluation créée", "Erreur lors de la création"),
+    updateEvaluation: (id: number, payload: EvaluationPayload) =>
+      mutate(() => evaluationApi.update(id, payload), "Évaluation modifiée", "Erreur lors de la modification"),
+    deleteEvaluation: (id: number) =>
+      mutate(() => evaluationApi.delete(id), "Évaluation supprimée", "Erreur lors de la suppression"),
+  }
+}

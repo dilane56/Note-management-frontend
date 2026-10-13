@@ -1,216 +1,171 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import type React from "react"
+import { useEffect, useState } from "react"
+import { BookOpen, Edit, Loader2, MessageSquare, Plus, Search, Trash2, Users } from "lucide-react"
+import { ConfirmDialog, ErrorState, EvaluationSelect, SectionHeader, TableStateRow, useConfirmDelete } from "@/components/shared"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Plus, Save, Search, BookOpen, Users, Edit, MessageSquare } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/contexts/auth-context"
-import { useGrades } from "@/hooks/useGrades"
+import { runAction, useAsync } from "@/hooks/useAsync"
 import { useEvaluations } from "@/hooks/useEvaluations"
-import { toast } from "sonner"
+import { gradeApi } from "@/lib/grade-api"
+import { evaluationLabel, formatOn20, formatRawGrade, fullName, gradeVariant, normalize, toTwenty } from "@/lib/format"
+import { teacherApi } from "@/lib/teacher-api"
+import type { NoteInStudent, StudentResponse, Subject } from "@/lib/types"
+
+/** Commentaire par défaut posé par le backend quand aucun commentaire n'est saisi. */
+const DEFAULT_COMMENT = "RAS"
+
+type GradeDialog = { student: StudentResponse; note: NoteInStudent | null } | null
 
 export function GradeEntry() {
   const { user } = useAuth()
-  const [selectedSubject, setSelectedSubject] = useState<number | null>(null)
-  const [selectedEvaluation, setSelectedEvaluation] = useState<number | null>(null)
-  const [isAddingGrade, setIsAddingGrade] = useState(false)
-  const [currentStudent, setCurrentStudent] = useState<any>(null)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [newGrade, setNewGrade] = useState({ 
-    gradeValue: "", 
-    evaluationID: ""
-  })
-  const [gradeError, setGradeError] = useState("")
-  const [isCommentingGrade, setIsCommentingGrade] = useState(false)
-  const [commentingGrade, setCommentingGrade] = useState<any>(null)
-  const [commentText, setCommentText] = useState("")
-
-  const [teacherSubjects, setTeacherSubjects] = useState<any[]>([])
-  const [subjectStudents, setSubjectStudents] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [selectedSubjectData, setSelectedSubjectData] = useState<any>(null)
-
-  const { fetchTeacherSubjects, fetchStudentsBySubject, addGradeForSubject, fetchGradesBySubject, updateGrade, updateGradeComment } = useGrades()
   const { evaluations } = useEvaluations()
+  const [selectedSubjectId, setSelectedSubjectId] = useState("")
+  const [selectedEvaluation, setSelectedEvaluation] = useState("")
+  const [searchTerm, setSearchTerm] = useState("")
+  const [gradeDialog, setGradeDialog] = useState<GradeDialog>(null)
+  const [gradeValue, setGradeValue] = useState("")
+  const [comment, setComment] = useState("")
+  const [commenting, setCommenting] = useState<{ student: StudentResponse; note: NoteInStudent } | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const confirmDelete = useConfirmDelete<{ student: StudentResponse; note: NoteInStudent }>()
 
-  useEffect(() => {
-    if (user?.id) {
-      loadTeacherSubjects()
-    }
-  }, [user])
+  const subjects = useAsync<Subject[]>(() => teacherApi.getSubjects(user!.id), [user?.id], [], !!user?.id)
+  const subjectId = Number(selectedSubjectId)
+  const evaluationId = Number(selectedEvaluation)
+  const subject = subjects.data.find((s) => s.id === subjectId)
+  const noteMaximale = subject?.noteMaximale || 20
 
-  useEffect(() => {
-    if (selectedSubject) {
-      loadSubjectStudents()
-      // Récupérer les données de la matière sélectionnée
-      const subjectData = teacherSubjects.find(s => s.id === selectedSubject)
-      setSelectedSubjectData(subjectData)
-    } else {
-      setSubjectStudents([])
-      setSelectedSubjectData(null)
-    }
-  }, [selectedSubject, teacherSubjects])
-
-  const loadTeacherSubjects = async () => {
-    if (!user?.id) return
-    setLoading(true)
-    try {
-      const subjects = await fetchTeacherSubjects(user.id)
-      setTeacherSubjects(subjects)
-    } catch (error) {
-      console.error('Erreur lors du chargement des matières:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadSubjectStudents = async () => {
-    if (!selectedSubject) return
-    setLoading(true)
-    try {
-      const students = await fetchStudentsBySubject(selectedSubject)
-      setSubjectStudents(students)
-    } catch (error) {
-      console.error('Erreur lors du chargement des étudiants:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const filteredStudents = subjectStudents.filter((student) =>
-    `${student.firstName} ${student.lastName}`.toLowerCase().includes(searchTerm.toLowerCase())
+  const students = useAsync<StudentResponse[]>(
+    () => gradeApi.getStudentsBySubject(subjectId),
+    [subjectId],
+    [],
+    subjectId > 0,
   )
 
-  const handleAddGrade = async () => {
-    if (!selectedSubject || !currentStudent || !newGrade.evaluationID || !newGrade.gradeValue) {
-      toast.error('Veuillez remplir tous les champs obligatoires')
-      return
-    }
+  // Valeurs par défaut : première matière et évaluation la plus récente.
+  useEffect(() => {
+    if (!selectedSubjectId && subjects.data.length === 1) setSelectedSubjectId(String(subjects.data[0].id))
+  }, [subjects.data, selectedSubjectId])
+  useEffect(() => {
+    if (!selectedEvaluation && evaluations.length > 0) setSelectedEvaluation(String(evaluations[0].id))
+  }, [evaluations, selectedEvaluation])
 
-    // Vérification de la note maximale
-    if (gradeError) {
-      toast.error(gradeError)
-      return
-    }
+  const noteFor = (student: StudentResponse) =>
+    student.notes?.find((note) => note.subjectId === subjectId && note.evaluationReponse?.id === evaluationId) ?? null
 
-    try {
-      const existingGrade = getStudentGradeForEvaluation(currentStudent, Number(newGrade.evaluationID))
-      
-      if (existingGrade) {
-        // Mise à jour de la note existante
-        await updateGrade(existingGrade.noteId, {
-          studentID: currentStudent.id,
-          SubjectID: selectedSubject,
-          evaluationId: Number(newGrade.evaluationID),
-          noteValue: Number(newGrade.gradeValue)
-        })
-        toast.success('Note mise à jour avec succès!')
-      } else {
-        // Ajout d'une nouvelle note
-        await addGradeForSubject(selectedSubject, currentStudent.id, Number(newGrade.evaluationID), {
-          noteValue: Number(newGrade.gradeValue)
-        })
-        toast.success('Note ajoutée avec succès!')
-      }
-      
-      setIsAddingGrade(false)
-      setNewGrade({ gradeValue: "", evaluationID: "" })
-      setGradeError("")
-      setCurrentStudent(null)
-      // Recharger les étudiants avec leurs notes
-      await loadSubjectStudents()
-    } catch (error) {
-      console.error('Erreur lors de l\'opération:', error)
-      toast.error('Erreur lors de l\'opération')
-    }
+  const term = normalize(searchTerm)
+  const filteredStudents = students.data
+    .filter((s) => normalize(fullName(s)).includes(term) || normalize(s.matricule).includes(term))
+    .sort((a, b) => a.lastName.localeCompare(b.lastName, "fr") || a.firstName.localeCompare(b.firstName, "fr"))
+  const gradedCount = students.data.filter((s) => noteFor(s)).length
+
+  const parsedValue = Number(gradeValue.replace(",", "."))
+  const valueError =
+    gradeValue.trim() === ""
+      ? ""
+      : !Number.isFinite(parsedValue) || parsedValue < 0
+        ? "La note doit être un nombre positif"
+        : parsedValue > noteMaximale
+          ? `La note ne doit pas dépasser ${noteMaximale}`
+          : ""
+
+  const openGradeDialog = (student: StudentResponse) => {
+    const note = noteFor(student)
+    setGradeDialog({ student, note })
+    setGradeValue(note ? String(note.noteValue) : "")
+    setComment(note?.comment && note.comment !== DEFAULT_COMMENT ? note.comment : "")
   }
 
-  const openAddGradeModal = (student: any) => {
-    setCurrentStudent(student)
-    setGradeError("")
-    const existingGrade = selectedEvaluation ? getStudentGradeForEvaluation(student, selectedEvaluation) : null
-    if (existingGrade) {
-      setNewGrade({
-        gradeValue: existingGrade.noteValue.toString(),
-        evaluationID: selectedEvaluation?.toString() || ""
-      })
-    } else {
-      setNewGrade({ gradeValue: "", evaluationID: selectedEvaluation?.toString() || "" })
+  const handleSaveGrade = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!gradeDialog || gradeValue.trim() === "" || valueError) return
+    const payload = {
+      studentId: gradeDialog.student.id,
+      subjectId,
+      evaluationId,
+      noteValue: parsedValue,
+      ...(comment.trim() ? { comment: comment.trim() } : {}),
     }
-    setIsAddingGrade(true)
-  }
-
-  const getStudentGradeForEvaluation = (student: any, evaluationId: number) => {
-    return student.notes?.find((note: any) => 
-      note.evaluationReponse.id === evaluationId && note.subjectId === selectedSubject
+    setIsSubmitting(true)
+    const { ok } = await runAction(
+      () => (gradeDialog.note ? gradeApi.update(gradeDialog.note.noteId, payload) : gradeApi.create(payload)),
+      gradeDialog.note ? "Note modifiée" : "Note enregistrée",
+      "Erreur lors de l'enregistrement de la note",
     )
+    setIsSubmitting(false)
+    if (ok) {
+      setGradeDialog(null)
+      await students.reload()
+    }
   }
+
+  const handleSaveComment = async () => {
+    if (!commenting) return
+    setIsSubmitting(true)
+    const { ok } = await runAction(
+      () => gradeApi.updateComment(commenting.note.noteId, comment.trim()),
+      "Commentaire enregistré",
+      "Erreur lors de l'enregistrement du commentaire",
+    )
+    setIsSubmitting(false)
+    if (ok) {
+      setCommenting(null)
+      await students.reload()
+    }
+  }
+
+  const ready = subjectId > 0 && evaluationId > 0
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold">Saisie des Notes</h2>
-          <p className="text-muted-foreground">Gérez les notes de vos étudiants</p>
-        </div>
-      </div>
+      <SectionHeader title="Saisie des notes" description="Choisissez une matière et une évaluation, puis notez vos étudiants" />
 
-      {/* Sélection matière et évaluation */}
+      {subjects.error && <ErrorState message={subjects.error} onRetry={subjects.reload} />}
+
       <Card>
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <Label htmlFor="subject-select">Matière *</Label>
-              <Select value={selectedSubject?.toString() || ""} onValueChange={(value) => setSelectedSubject(Number(value))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choisir une matière" />
+            <div className="space-y-2">
+              <Label htmlFor="grade-subject">Matière *</Label>
+              <Select value={selectedSubjectId} onValueChange={setSelectedSubjectId}>
+                <SelectTrigger id="grade-subject" className="w-full">
+                  <SelectValue placeholder={subjects.loading ? "Chargement..." : "Choisir une matière"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {teacherSubjects.map((subject) => (
-                    <SelectItem key={subject.id} value={subject.id.toString()}>
-                      {subject.name}
+                  {subjects.data.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.name} — {s.className}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="evaluation-filter">Filtrer par évaluation</Label>
-              <Select value={selectedEvaluation?.toString() || "all"} onValueChange={(value) => setSelectedEvaluation(value === "all" ? null : Number(value))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Toutes les évaluations" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes les évaluations</SelectItem>
-                  {evaluations.map((evaluation) => (
-                    <SelectItem key={evaluation.id} value={evaluation.id.toString()}>
-                      {evaluation.name} ({evaluation.typeEvaluation})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-2">
+              <Label htmlFor="grade-evaluation">Évaluation *</Label>
+              <EvaluationSelect
+                id="grade-evaluation"
+                evaluations={evaluations}
+                value={selectedEvaluation}
+                onChange={setSelectedEvaluation}
+              />
             </div>
-            <div>
-              <Label htmlFor="search">Rechercher un étudiant</Label>
+            <div className="space-y-2">
+              <Label htmlFor="grade-search">Rechercher un étudiant</Label>
               <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
                 <Input
-                  id="search"
-                  placeholder="Nom de l'étudiant..."
+                  id="grade-search"
+                  placeholder="Nom ou matricule..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -221,234 +176,227 @@ export function GradeEntry() {
         </CardContent>
       </Card>
 
-      {/* Liste des étudiants */}
-      {selectedSubject && (
+      {!subjects.loading && subjects.data.length === 0 && !subjects.error && (
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground">
+            Aucune matière ne vous est assignée. Contactez l&apos;administration.
+          </CardContent>
+        </Card>
+      )}
+
+      {evaluations.length === 0 && (
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground">
+            Aucune évaluation n&apos;a encore été créée par l&apos;administration.
+          </CardContent>
+        </Card>
+      )}
+
+      {ready && subject ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              Étudiants - {teacherSubjects.find(s => s.id === selectedSubject)?.name}
+              <Users className="w-5 h-5" aria-hidden />
+              {subject.name} — {subject.className}
             </CardTitle>
             <CardDescription>
-              {filteredStudents.length} étudiant(s) trouvé(s)
+              {evaluationLabel(evaluations.find((e) => e.id === evaluationId))} · notes sur {noteMaximale} · coefficient{" "}
+              {subject.coefficient} · {gradedCount}/{students.data.length} étudiant(s) noté(s)
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {loading ? (
-              <p>Chargement des étudiants...</p>
-            ) : filteredStudents.length === 0 ? (
-              <p className="text-muted-foreground text-center py-4">
-                Aucun étudiant trouvé pour cette matière
-              </p>
+            {students.error ? (
+              <ErrorState message={students.error} onRetry={students.reload} />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Étudiant</TableHead>
                     <TableHead>Matricule</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Note ({selectedEvaluation ? evaluations.find(e => e.id === selectedEvaluation)?.name : 'Sélectionner évaluation'})</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead>Étudiant</TableHead>
+                    <TableHead>Note</TableHead>
+                    <TableHead className="hidden lg:table-cell">Commentaire</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredStudents.map((student) => {
-                    const existingGrade = selectedEvaluation ? getStudentGradeForEvaluation(student, selectedEvaluation) : null
-                    return (
-                      <TableRow key={student.id}>
-                        <TableCell className="font-medium">
-                          {student.firstName} {student.lastName}
-                        </TableCell>
-                        <TableCell>{student.matricule || '-'}</TableCell>
-                        <TableCell>{student.email}</TableCell>
-                        <TableCell>
-                          {selectedEvaluation && existingGrade ? (
-                            <div className="flex items-center gap-2">
-                              <Badge variant={existingGrade.noteValue >= 16 ? "default" : existingGrade.noteValue >= 12 ? "secondary" : "destructive"}>
-                                {existingGrade.noteValue}/20
+                  {students.loading || filteredStudents.length === 0 ? (
+                    <TableStateRow
+                      colSpan={5}
+                      loading={students.loading}
+                      emptyLabel={searchTerm ? "Aucun étudiant ne correspond à la recherche" : "Aucun étudiant dans cette classe"}
+                    />
+                  ) : (
+                    filteredStudents.map((student) => {
+                      const note = noteFor(student)
+                      const on20 = note ? toTwenty(note.noteValue, noteMaximale) : 0
+                      return (
+                        <TableRow key={student.id}>
+                          <TableCell>
+                            <Badge variant="outline">{student.matricule || "-"}</Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">{fullName(student)}</TableCell>
+                          <TableCell>
+                            {note ? (
+                              <Badge variant={gradeVariant(on20)} title={formatOn20(on20)}>
+                                {formatRawGrade(note.noteValue, noteMaximale)}
                               </Badge>
-                              {existingGrade.comment && (
-                                <span className="text-xs text-muted-foreground truncate max-w-20" title={existingGrade.comment}>
-                                  {existingGrade.comment}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            {selectedEvaluation && existingGrade ? (
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => openAddGradeModal(student)}
-                              >
-                                <Edit className="w-4 h-4 mr-1" />
-                                Modifier
-                              </Button>
                             ) : (
-                              <Button 
-                                size="sm" 
-                                onClick={() => openAddGradeModal(student)}
-                                disabled={!selectedEvaluation}
-                              >
-                                <Plus className="w-4 h-4 mr-1" />
-                                Ajouter Note
-                              </Button>
+                              <span className="text-muted-foreground">Non noté</span>
                             )}
-                            {selectedEvaluation && existingGrade && (
-                              <Button 
-                                size="sm" 
-                                variant="ghost"
-                                onClick={() => {
-                                  setCommentingGrade(existingGrade)
-                                  setCommentText(existingGrade.comment || "")
-                                  setIsCommentingGrade(true)
-                                }}
-                              >
-                                <MessageSquare className="w-4 h-4" />
-                              </Button>
+                          </TableCell>
+                          <TableCell className="hidden lg:table-cell max-w-56 truncate text-sm text-muted-foreground" title={note?.comment ?? ""}>
+                            {note?.comment && note.comment !== DEFAULT_COMMENT ? note.comment : ""}
+                          </TableCell>
+                          <TableCell className="text-right whitespace-nowrap">
+                            <Button
+                              size="sm"
+                              variant={note ? "outline" : "default"}
+                              onClick={() => openGradeDialog(student)}
+                            >
+                              {note ? <Edit className="w-4 h-4 mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
+                              {note ? "Modifier" : "Noter"}
+                            </Button>
+                            {note && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setCommenting({ student, note })
+                                    setComment(note.comment && note.comment !== DEFAULT_COMMENT ? note.comment : "")
+                                  }}
+                                  aria-label={`Commentaire pour ${fullName(student)}`}
+                                >
+                                  <MessageSquare className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-destructive"
+                                  onClick={() => confirmDelete.ask({ student, note })}
+                                  aria-label={`Supprimer la note de ${fullName(student)}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </>
                             )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
+                  )}
                 </TableBody>
               </Table>
             )}
           </CardContent>
         </Card>
+      ) : (
+        subjects.data.length > 0 &&
+        evaluations.length > 0 && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center text-muted-foreground space-y-2">
+                <BookOpen className="w-12 h-12 mx-auto opacity-50" aria-hidden />
+                <p className="text-lg font-medium">Sélectionnez une matière et une évaluation</p>
+              </div>
+            </CardContent>
+          </Card>
+        )
       )}
 
-      {/* Modal d'ajout de note */}
-      <Dialog open={isAddingGrade} onOpenChange={setIsAddingGrade}>
+      <Dialog open={gradeDialog !== null} onOpenChange={(open) => !open && !isSubmitting && setGradeDialog(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {selectedEvaluation && currentStudent && getStudentGradeForEvaluation(currentStudent, selectedEvaluation) ? 'Modifier la Note' : 'Ajouter une Note'}
-            </DialogTitle>
+            <DialogTitle>{gradeDialog?.note ? "Modifier la note" : "Saisir une note"}</DialogTitle>
             <DialogDescription>
-              {currentStudent && 
-                `${selectedEvaluation && getStudentGradeForEvaluation(currentStudent, selectedEvaluation) ? 'Modifier' : 'Ajouter'} une note pour ${currentStudent.firstName} ${currentStudent.lastName}`
-              }
+              {gradeDialog && fullName(gradeDialog.student)} — {subject?.name},{" "}
+              {evaluationLabel(evaluations.find((e) => e.id === evaluationId))}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="evaluation">Évaluation *</Label>
-              <Select
-                value={newGrade.evaluationID}
-                onValueChange={(value) => setNewGrade({ ...newGrade, evaluationID: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Choisir une évaluation" />
-                </SelectTrigger>
-                <SelectContent>
-                  {evaluations.map((evaluation) => (
-                    <SelectItem key={evaluation.id} value={evaluation.id.toString()}>
-                      {evaluation.name} ({evaluation.typeEvaluation})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="grade">Note (/{selectedSubjectData?.noteMaximale || 20}) *</Label>
+          <form onSubmit={handleSaveGrade} className="space-y-4" noValidate>
+            <div className="space-y-2">
+              <Label htmlFor="grade-value">Note (sur {noteMaximale}) *</Label>
               <Input
-                id="grade"
+                id="grade-value"
                 type="number"
+                inputMode="decimal"
                 min="0"
-                max={selectedSubjectData?.noteMaximale || 20}
-                step="0.1"
-                placeholder={`Ex: 15.5 (max: ${selectedSubjectData?.noteMaximale || 20})`}
-                value={newGrade.gradeValue}
-                onChange={(e) => {
-                  const value = e.target.value
-                  const noteMaximale = selectedSubjectData?.noteMaximale || 20
-                  
-                  setNewGrade({ ...newGrade, gradeValue: value })
-                  
-                  if (value && Number(value) > noteMaximale) {
-                    setGradeError(`La note ne doit pas dépasser ${noteMaximale}`)
-                  } else {
-                    setGradeError("")
-                  }
-                }}
-                className={gradeError ? "border-red-500" : ""}
+                max={noteMaximale}
+                step="any"
+                autoFocus
+                placeholder={`Entre 0 et ${noteMaximale}`}
+                value={gradeValue}
+                onChange={(e) => setGradeValue(e.target.value)}
+                aria-invalid={!!valueError}
               />
-              {gradeError && (
-                <p className="text-sm text-red-500 mt-1">{gradeError}</p>
+              {valueError ? (
+                <p className="text-sm text-destructive">{valueError}</p>
+              ) : (
+                gradeValue.trim() !== "" && (
+                  <p className="text-sm text-muted-foreground">Soit {formatOn20(toTwenty(parsedValue, noteMaximale))}</p>
+                )
               )}
             </div>
-
-            <Button 
-              className="w-full" 
-              onClick={handleAddGrade}
-              disabled={!newGrade.evaluationID || !newGrade.gradeValue || !!gradeError}
-            >
-              <Save className="w-4 h-4 mr-2" />
+            <div className="space-y-2">
+              <Label htmlFor="grade-comment">Commentaire (facultatif)</Label>
+              <Textarea
+                id="grade-comment"
+                maxLength={500}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Appréciation sur la copie..."
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={isSubmitting || gradeValue.trim() === "" || !!valueError}>
+              {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Enregistrer
             </Button>
-          </div>
+          </form>
         </DialogContent>
       </Dialog>
 
-      {/* Modal de commentaire */}
-      <Dialog open={isCommentingGrade} onOpenChange={setIsCommentingGrade}>
+      <Dialog open={commenting !== null} onOpenChange={(open) => !open && !isSubmitting && setCommenting(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Ajouter un Commentaire</DialogTitle>
+            <DialogTitle>Commentaire</DialogTitle>
             <DialogDescription>
-              Commentaire pour la note de {commentingGrade?.noteValue}/20
+              {commenting && `${fullName(commenting.student)} — ${formatRawGrade(commenting.note.noteValue, noteMaximale)}`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="commentText">Commentaire</Label>
-              <Textarea
-                id="commentText"
-                placeholder="Commentaire sur la copie..."
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-              />
-            </div>
-            <Button 
-              className="w-full" 
-              onClick={async () => {
-                try {
-                  await updateGradeComment(commentingGrade.noteId, commentText)
-                  setIsCommentingGrade(false)
-                  setCommentingGrade(null)
-                  setCommentText("")
-                  await loadSubjectStudents()
-                  toast.success('Commentaire ajouté avec succès!')
-                } catch (error) {
-                  toast.error('Erreur lors de l\'ajout du commentaire')
-                }
-              }}
-            >
-              <Save className="w-4 h-4 mr-2" />
-              Enregistrer Commentaire
+            <Textarea
+              aria-label="Commentaire"
+              maxLength={500}
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Laisser vide pour effacer le commentaire"
+            />
+            <Button className="w-full" onClick={handleSaveComment} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Enregistrer le commentaire
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Instructions */}
-      {!selectedSubject && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center text-muted-foreground space-y-2">
-              <BookOpen className="w-12 h-12 mx-auto opacity-50" />
-              <p className="text-lg font-medium">Sélectionnez une matière pour commencer</p>
-              <p>Choisissez la matière pour voir la liste des étudiants.</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <ConfirmDialog
+        {...confirmDelete.dialogProps}
+        title="Supprimer la note"
+        description={
+          confirmDelete.target
+            ? `Supprimer la note ${formatRawGrade(confirmDelete.target.note.noteValue, noteMaximale)} de ${fullName(confirmDelete.target.student)} ?`
+            : ""
+        }
+        onConfirm={async () => {
+          if (!confirmDelete.target) return
+          const { ok } = await runAction(
+            () => gradeApi.delete(confirmDelete.target!.note.noteId),
+            "Note supprimée",
+            "Erreur lors de la suppression",
+          )
+          if (ok) await students.reload()
+        }}
+      />
     </div>
   )
 }
