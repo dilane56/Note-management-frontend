@@ -8,6 +8,4 @@ export const subjectApi = {
   delete: (id: number) => api.delete<MessageResponse>(`/api/subjects/${id}`),
   assignTeacher: (teacherId: number, subjectId: number) =>
     api.patch<unknown>(`/api/teachers/${teacherId}/assign-subject/${subjectId}`),
-  updateCoefficient: (subjectId: number, coefficient: number) =>
-    api.patch<Subject>(`/api/subjects/${subjectId}/coefficient`, undefined, { coefficient }),
 }

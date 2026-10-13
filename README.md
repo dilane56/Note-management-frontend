@@ -41,7 +41,7 @@ Le backend doit autoriser l'origine du frontend (`CORS_ALLOWED_ORIGINS`, par dé
   - statistiques.
 - **Enseignant** :
   - saisie, modification et suppression des notes et commentaires, pour ses matières ;
-  - consultation de ses matières (coefficient modifiable) et de ses classes, avec leurs statistiques.
+  - consultation de ses matières (coefficient et barème en lecture seule, fixés par l'administrateur) et de ses classes, avec leurs statistiques.
 - **Étudiant** :
   - ses notes, sur le barème de la matière et sur 20 ;
   - sa moyenne et son rang par évaluation ;
