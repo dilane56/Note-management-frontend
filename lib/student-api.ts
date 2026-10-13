@@ -1,17 +1,20 @@
-import { api } from './api';
-import { StudentResponseDTO } from './api';
+import { api, downloadFile } from "./api"
+import type { StudentRanking, Transcript } from "./types"
 
-// Récupérer tous les étudiants
-export const getAllStudents = async (): Promise<StudentResponseDTO[]> => {
-  return api.get('/api/students');
-};
+export const studentApi = {
+  /** Classement toutes évaluations confondues. */
+  getRanking: (studentId: number) => api.get<StudentRanking>(`/api/students/${studentId}/ranking`),
 
-// Récupérer un étudiant par ID
-export const getStudent = async (id: number): Promise<StudentResponseDTO> => {
-  return api.get(`/api/students/${id}`);
-};
+  /** Relevé (moyenne, rang, notes) pour une évaluation ; 404 tant qu'aucune note n'est saisie. */
+  previewTranscript: (studentId: number, evaluationId: number) =>
+    api.get<Transcript>(`/api/transcripts/students/${studentId}/evaluations/${evaluationId}/preview`),
 
-// Récupérer les étudiants d'une classe
-export const getStudentsByClass = async (classId: number): Promise<StudentResponseDTO[]> => {
-  return api.get(`/api/classes/${classId}/students`);
-};
+  downloadTranscript: (studentId: number, evaluationId: number) =>
+    downloadFile(
+      `/api/transcripts/students/${studentId}/evaluations/${evaluationId}/download`,
+      `releve-${studentId}-evaluation-${evaluationId}.pdf`,
+    ),
+
+  exportGrades: (studentId: number) =>
+    downloadFile(`/api/students/${studentId}/export-excel`, `notes-${studentId}.xlsx`),
+}

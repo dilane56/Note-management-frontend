@@ -1,79 +1,18 @@
-import { apiRequest } from './api'
+import { api } from "./api"
+import type { MessageResponse, Role, StudentPayload, StudentResponse, UserPayload, UserResponse } from "./types"
 
-export interface User {
-  id: number
-  firstName: string
-  lastName: string
-  email: string
-  password?: string
-  role: 'ADMIN' | 'STUDENT' | 'TEACHER'
-}
-
-export interface CreateUserRequest {
-  firstName: string
-  lastName: string
-  email: string
-  password: string
-  role: 'ADMIN' | 'STUDENT' | 'TEACHER'
-}
-
-export interface UpdateUserRequest {
-  firstName: string
-  lastName: string
-  email: string
-  role: 'ADMIN' | 'STUDENT' | 'TEACHER'
-}
+const endpointFor = (role: Role) =>
+  role === "ADMIN" ? "/api/v1/admins" : role === "TEACHER" ? "/api/teachers" : "/api/students"
 
 export const userApi = {
-  async getUsers(token: string): Promise<User[]> {
-    return apiRequest('/api/users', {}, token)
-  },
+  getUsers: () => api.get<UserResponse[]>("/api/users"),
 
-  async createAdmin(data: CreateUserRequest, token: string): Promise<User> {
-    return apiRequest('/api/v1/admins', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }, token)
-  },
+  getStudent: (id: number) => api.get<StudentResponse>(`/api/students/${id}`),
 
-  async createStudent(data: CreateUserRequest & { studentClassId: number }, token: string): Promise<User> {
-    return apiRequest('/api/students', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }, token)
-  },
+  create: (role: Role, data: UserPayload | StudentPayload) => api.post<UserResponse>(endpointFor(role), data),
 
-  async createTeacher(data: CreateUserRequest, token: string): Promise<User> {
-    return apiRequest('/api/teachers', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }, token)
-  },
+  update: (role: Role, id: number, data: UserPayload | StudentPayload) =>
+    api.put<UserResponse>(`${endpointFor(role)}/${id}`, data),
 
-  async updateAdmin(id: number, data: UpdateUserRequest, token: string): Promise<User> {
-    return apiRequest(`/api/v1/admins/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    }, token)
-  },
-
-  async updateStudent(id: number, data: UpdateUserRequest & { studentClassId: number }, token: string): Promise<User> {
-    return apiRequest(`/api/students/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    }, token)
-  },
-
-  async updateTeacher(id: number, data: UpdateUserRequest, token: string): Promise<User> {
-    return apiRequest(`/api/teachers/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    }, token)
-  },
-
-  async deleteUser(id: number, token: string): Promise<string> {
-    return apiRequest(`/api/users/${id}`, {
-      method: 'DELETE'
-    }, token)
-  }
+  delete: (id: number) => api.delete<MessageResponse>(`/api/users/${id}`),
 }

@@ -1,106 +1,143 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import { authApi } from "@/lib/auth-api"
-import { type UserResponse, ApiError } from "@/lib/api"
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
 import { toast } from "sonner"
+import { authApi } from "@/lib/auth-api"
+import { ApiError, getErrorMessage, TOKEN_STORAGE_KEY, UNAUTHORIZED_EVENT, USER_STORAGE_KEY } from "@/lib/api"
+import type { Role, UserResponse } from "@/lib/types"
 
-type UserRole = "student" | "teacher" | "admin"
+export type UserRole = "student" | "teacher" | "admin"
 
-interface User {
+export interface AuthUser {
   id: number
   name: string
   email: string
   role: UserRole
 }
 
+export interface LoginResult {
+  success: boolean
+  message?: string
+}
+
 interface AuthContextType {
-  user: User | null
-  login: (email: string, password: string) => Promise<boolean>
-  logout: () => void
-  isLoading: boolean
+  user: AuthUser | null
   token: string | null
+  /** true pendant la restauration de la session au démarrage. */
+  isLoading: boolean
+  login: (email: string, password: string) => Promise<LoginResult>
+  logout: (showMessage?: boolean) => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Helper function to convert backend role to frontend role
-const mapRole = (backendRole: string): UserRole => {
-  switch (backendRole) {
-    case 'ADMIN': return 'admin'
-    case 'STUDENT': return 'student'
-    case 'TEACHER': return 'teacher'
-    default: return 'student'
+const ROLE_MAP: Record<Role, UserRole> = { ADMIN: "admin", TEACHER: "teacher", STUDENT: "student" }
+
+const mapUser = (backendUser: UserResponse): AuthUser => ({
+  id: backendUser.id,
+  name: `${backendUser.firstName} ${backendUser.lastName}`.trim(),
+  email: backendUser.email,
+  role: ROLE_MAP[backendUser.role],
+})
+
+const clearStorage = () => {
+  try {
+    localStorage.removeItem(USER_STORAGE_KEY)
+    localStorage.removeItem(TOKEN_STORAGE_KEY)
+  } catch {
+    /* stockage indisponible : rien à nettoyer */
   }
 }
 
-// Helper function to convert backend user to frontend user
-const mapUser = (backendUser: UserResponse): User => ({
-  id: backendUser.id,
-  name: `${backendUser.firstName} ${backendUser.lastName}`,
-  email: backendUser.email,
-  role: mapRole(backendUser.role)
-})
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  // Évite d'afficher plusieurs fois « session expirée » quand plusieurs requêtes échouent en même temps.
+  const sessionActive = useRef(false)
 
-  useEffect(() => {
-    // Check for stored user session
-    const storedUser = localStorage.getItem("eduGradesUser")
-    const storedToken = localStorage.getItem("eduGradesToken")
-    
-    if (storedUser && storedToken) {
-      try {
-        setUser(JSON.parse(storedUser))
-        setToken(storedToken)
-      } catch (error) {
-        // Si les données sont corrompues, nettoyer
-        localStorage.removeItem("eduGradesUser")
-        localStorage.removeItem("eduGradesToken")
-      }
-    }
-    setIsLoading(false)
-  }, [])
-
-  const login = async (email: string, password: string): Promise<boolean> => {
-    setIsLoading(true)
-
-    try {
-      const response = await authApi.login({ email, password })
-      const mappedUser = mapUser(response.user)
-      
-      setUser(mappedUser)
-      setToken(response.token)
-      
-      // Store in localStorage
-      localStorage.setItem("eduGradesUser", JSON.stringify(mappedUser))
-      localStorage.setItem("eduGradesToken", response.token)
-      
-      toast.success(`Bienvenue ${mappedUser.name}!`)
-      setIsLoading(false)
-      return true
-    } catch (error) {
-      console.error('Login error:', error)
-      toast.error(error instanceof ApiError ? error.message : 'Erreur de connexion')
-      setIsLoading(false)
-      return false
-    }
-  }
-
-  const logout = (showMessage = true) => {
+  const logout = useCallback((showMessage = true) => {
+    sessionActive.current = false
     setUser(null)
     setToken(null)
-    localStorage.removeItem("eduGradesUser")
-    localStorage.removeItem("eduGradesToken")
-    if (showMessage) {
-      toast.info('Vous avez été déconnecté')
+    clearStorage()
+    if (showMessage) toast.info("Vous avez été déconnecté")
+  }, [])
+
+  // Restauration de la session : le token stocké est vérifié auprès du backend.
+  useEffect(() => {
+    let cancelled = false
+    const restore = async () => {
+      let storedUser: AuthUser | null = null
+      let storedToken: string | null = null
+      try {
+        storedToken = localStorage.getItem(TOKEN_STORAGE_KEY)
+        const rawUser = localStorage.getItem(USER_STORAGE_KEY)
+        storedUser = rawUser ? (JSON.parse(rawUser) as AuthUser) : null
+      } catch {
+        clearStorage()
+      }
+
+      if (storedToken && storedUser) {
+        try {
+          const info = await authApi.validateToken()
+          if (!cancelled) {
+            const role = ROLE_MAP[info.role] ?? storedUser.role
+            const restored = { ...storedUser, id: info.id ?? storedUser.id, role }
+            sessionActive.current = true
+            setUser(restored)
+            setToken(storedToken)
+          }
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 0) {
+            // Serveur injoignable : on garde la session, les écrans afficheront l'erreur réseau.
+            if (!cancelled) {
+              sessionActive.current = true
+              setUser(storedUser)
+              setToken(storedToken)
+            }
+          } else {
+            clearStorage()
+          }
+        }
+      }
+      if (!cancelled) setIsLoading(false)
+    }
+    restore()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Toute requête authentifiée qui reçoit un 401 ferme la session.
+  useEffect(() => {
+    const onUnauthorized = () => {
+      if (!sessionActive.current) return
+      logout(false)
+      toast.error("Votre session a expiré. Veuillez vous reconnecter.")
+    }
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+  }, [logout])
+
+  const login = async (email: string, password: string): Promise<LoginResult> => {
+    try {
+      const response = await authApi.login({ email: email.trim(), password })
+      const mappedUser = mapUser(response.user)
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mappedUser))
+      localStorage.setItem(TOKEN_STORAGE_KEY, response.token)
+      sessionActive.current = true
+      setUser(mappedUser)
+      setToken(response.token)
+      toast.success(`Bienvenue ${mappedUser.name} !`)
+      return { success: true }
+    } catch (error) {
+      // Message du backend : identifiants invalides (401) ou compte temporairement bloqué (429).
+      return { success: false, message: getErrorMessage(error, "Erreur de connexion") }
     }
   }
 
-  return <AuthContext.Provider value={{ user, login, logout, isLoading, token }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, token, isLoading, login, logout }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

@@ -1,287 +1,233 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { useEffect, useMemo, useState } from "react"
+import { Award, BarChart3, BookOpen, Download, FileSpreadsheet, List, Loader2, TrendingUp } from "lucide-react"
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { ErrorState, EvaluationSelect, LoadingState, SectionHeader, StatCard, TableStateRow } from "./shared"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Download, TrendingUp, BookOpen, Award, BarChart3, List } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/contexts/auth-context"
-import { api } from "@/lib/api"
-import { toast } from "sonner"
+import { runAction, useAsync } from "@/hooks/useAsync"
 import { useEvaluations } from "@/hooks/useEvaluations"
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts"
+import { ApiError } from "@/lib/api"
+import {
+  evaluationLabel,
+  formatOn20,
+  formatRank,
+  formatRawGrade,
+  gradeColor,
+  gradeVariant,
+  round,
+  toTwenty,
+} from "@/lib/format"
+import { gradeApi } from "@/lib/grade-api"
+import { studentApi } from "@/lib/student-api"
+import type { Evaluation, Grade, StudentRanking, Transcript } from "@/lib/types"
 
-export function StudentDashboard() {
-  const { user, token } = useAuth()
-  const { evaluations } = useEvaluations()
-  const [studentGrades, setStudentGrades] = useState<any[]>([])
-  const [filteredGrades, setFilteredGrades] = useState<any[]>([])
-  const [selectedEvaluation, setSelectedEvaluation] = useState<string>("all")
-  const [ranking, setRanking] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [viewMode, setViewMode] = useState<'list' | 'chart'>('list')
+const DEFAULT_COMMENT = "RAS"
 
-  useEffect(() => {
-    const fetchStudentGrades = async () => {
-      if (!user?.id) return
-      
+/** Notes de l'étudiant et évaluations pour lesquelles il a au moins une note. */
+function useStudentData() {
+  const { user } = useAuth()
+  const { evaluations, loading: evaluationsLoading } = useEvaluations()
+  const grades = useAsync<Grade[]>(() => gradeApi.getStudentGrades(user!.id), [user?.id], [], !!user?.id)
+
+  const gradedEvaluations = useMemo(() => {
+    const ids = new Set(grades.data.map((g) => g.evaluation?.id))
+    return evaluations.filter((e) => ids.has(e.id))
+  }, [evaluations, grades.data])
+
+  return { user, evaluations, gradedEvaluations, grades, loading: grades.loading || evaluationsLoading }
+}
+
+/** Relevé (moyenne et rang) d'une évaluation ; null si aucune note n'est encore saisie. */
+function useTranscript(studentId: number | undefined, evaluationId: number) {
+  return useAsync<Transcript | null>(
+    async () => {
       try {
-        setLoading(true)
-        const [grades, rankingData] = await Promise.all([
-          api.get(`/api/grades/students/${user.id}/grades`),
-          api.get(`/api/students/${user.id}/ranking`)
-        ])
-        setStudentGrades(grades)
-        setFilteredGrades(grades)
-        setRanking(rankingData)
+        return await studentApi.previewTranscript(studentId!, evaluationId)
       } catch (error) {
-        console.error('Erreur lors du chargement des données:', error)
-      } finally {
-        setLoading(false)
+        if (error instanceof ApiError && error.status === 404) return null
+        throw error
       }
-    }
-    
-    fetchStudentGrades()
-  }, [user])
-
-  useEffect(() => {
-    if (selectedEvaluation === "all") {
-      setFilteredGrades(studentGrades)
-    } else {
-      setFilteredGrades(studentGrades.filter(grade => 
-        grade.evaluation.id.toString() === selectedEvaluation
-      ))
-    }
-  }, [selectedEvaluation, studentGrades])
-
-  const downloadTranscript = async () => {
-    if (!user?.id || !selectedEvaluation) {
-      toast.error('Veuillez sélectionner une évaluation')
-      return
-    }
-    
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/transcripts/students/${user.id}/evaluations/${selectedEvaluation}/download`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      
-      if (response.ok) {
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `releve-notes-${user.name}-evaluation-${selectedEvaluation}.pdf`
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-        document.body.removeChild(a)
-        toast.success('Relevé téléchargé avec succès')
-      } else {
-        toast.error('Erreur lors du téléchargement')
-      }
-    } catch (error) {
-      console.error('Erreur lors du téléchargement:', error)
-      toast.error('Erreur lors du téléchargement')
-    }
-  }
-
-  const overallAverage = ranking?.studentAverage || (
-    filteredGrades.length > 0
-      ? filteredGrades.reduce((sum, item) => sum + item.noteValue, 0) / filteredGrades.length
-      : 0
+    },
+    [studentId, evaluationId],
+    null,
+    !!studentId && evaluationId > 0,
   )
+}
+
+function GradesOverview() {
+  const { user, gradedEvaluations, grades, loading } = useStudentData()
+  const [selectedEvaluation, setSelectedEvaluation] = useState("")
+  const [viewMode, setViewMode] = useState<"list" | "chart">("list")
+
+  // Par défaut : l'évaluation notée la plus récente (les évaluations sont triées de la plus récente à la plus ancienne).
+  useEffect(() => {
+    if (!selectedEvaluation && !loading) {
+      setSelectedEvaluation(gradedEvaluations.length > 0 ? String(gradedEvaluations[0].id) : "all")
+    }
+  }, [gradedEvaluations, loading, selectedEvaluation])
+
+  const evaluationId = selectedEvaluation && selectedEvaluation !== "all" ? Number(selectedEvaluation) : 0
+  const transcript = useTranscript(user?.id, evaluationId)
+  const globalRanking = useAsync<StudentRanking | null>(
+    () => studentApi.getRanking(user!.id),
+    [user?.id],
+    null,
+    !!user?.id && selectedEvaluation === "all",
+  )
+
+  const filteredGrades = grades.data
+    .filter((g) => !evaluationId || g.evaluation?.id === evaluationId)
+    .sort((a, b) => a.subjectName.localeCompare(b.subjectName, "fr"))
+  const ranking = evaluationId ? transcript.data?.ranking ?? null : globalRanking.data
+  const average = evaluationId ? transcript.data?.average : globalRanking.data?.studentAverage
+  const hasGrades = filteredGrades.length > 0
+  const subjectCount = new Set(filteredGrades.map((g) => g.subjectId)).size
+  const statsLoading = evaluationId ? transcript.loading : globalRanking.loading
+  const scopeLabel = evaluationId
+    ? evaluationLabel(gradedEvaluations.find((e) => e.id === evaluationId))
+    : "Toutes évaluations confondues"
+
+  const chartData = filteredGrades.map((g) => {
+    const on20 = round(toTwenty(g.noteValue, g.noteMaximale))
+    const label = evaluationId ? g.subjectName : `${g.subjectName} (${evaluationLabel(g.evaluation)})`
+    return { key: g.gradeId, name: label.length > 14 ? `${label.slice(0, 13)}…` : label, fullName: label, note: on20 }
+  })
+
+  if (loading) return <LoadingState label="Chargement de vos notes..." />
 
   return (
     <div className="space-y-6">
-      {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Moyenne Générale</CardTitle>
-            <Award className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-primary">
-              {overallAverage > 0 ? `${overallAverage.toFixed(2)}/20` : '-'}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {filteredGrades.length} note(s)
-            </p>
-          </CardContent>
-        </Card>
+      <SectionHeader
+        title="Mes notes"
+        description={scopeLabel}
+        actions={
+          <div className="w-64">
+            <EvaluationSelect
+              evaluations={gradedEvaluations}
+              value={selectedEvaluation}
+              onChange={setSelectedEvaluation}
+              includeAll
+            />
+          </div>
+        }
+      />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Matières</CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{filteredGrades.length}</div>
-            <p className="text-xs text-muted-foreground">Évaluées ce semestre</p>
-          </CardContent>
-        </Card>
+      {grades.error && <ErrorState message={grades.error} onRetry={grades.reload} />}
+      {(transcript.error || globalRanking.error) && (
+        <ErrorState message={transcript.error || globalRanking.error || ""} onRetry={evaluationId ? transcript.reload : globalRanking.reload} />
+      )}
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Rang</CardTitle>
-            <Award className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {ranking ? `${ranking.studentRank}/${ranking.totalStudents}` : '-'}
-            </div>
-            <p className="text-xs text-muted-foreground">Dans la classe</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Moyenne Classe</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-accent">
-              {ranking ? `${parseFloat(ranking.classAverage).toFixed(2)}/20` : '-'}
-            </div>
-            <p className="text-xs text-muted-foreground">Moyenne générale</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Moyenne générale"
+          value={statsLoading ? "…" : hasGrades ? formatOn20(average) : "-"}
+          hint="Pondérée par les coefficients"
+          icon={Award}
+          valueClassName="text-primary"
+        />
+        <StatCard
+          title="Rang"
+          value={statsLoading ? "…" : formatRank(ranking)}
+          hint="Dans la classe"
+          icon={TrendingUp}
+        />
+        <StatCard
+          title="Moyenne de la classe"
+          value={statsLoading ? "…" : hasGrades && ranking ? formatOn20(ranking.classAverage) : "-"}
+          hint={scopeLabel}
+          icon={BarChart3}
+        />
+        <StatCard title="Matières notées" value={subjectCount} hint={`${filteredGrades.length} note(s)`} icon={BookOpen} />
       </div>
 
-      {/* Grades by Subject */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
           <div>
-            <CardTitle>Notes par Matière</CardTitle>
-            <CardDescription>Filtrer par évaluation</CardDescription>
+            <CardTitle>Notes par matière</CardTitle>
+            <CardDescription>Note sur le barème de la matière et équivalent sur 20</CardDescription>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex gap-1">
             <Button
-              variant={viewMode === 'list' ? 'default' : 'outline'}
+              variant={viewMode === "list" ? "default" : "outline"}
               size="sm"
-              onClick={() => setViewMode('list')}
+              onClick={() => setViewMode("list")}
+              aria-label="Afficher en liste"
+              aria-pressed={viewMode === "list"}
             >
               <List className="w-4 h-4" />
             </Button>
             <Button
-              variant={viewMode === 'chart' ? 'default' : 'outline'}
+              variant={viewMode === "chart" ? "default" : "outline"}
               size="sm"
-              onClick={() => setViewMode('chart')}
+              onClick={() => setViewMode("chart")}
+              aria-label="Afficher en graphique"
+              aria-pressed={viewMode === "chart"}
             >
               <BarChart3 className="w-4 h-4" />
             </Button>
-            <Select value={selectedEvaluation} onValueChange={setSelectedEvaluation}>
-              <SelectTrigger className="w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toutes les évaluations</SelectItem>
-                {evaluations.map((evaluation) => (
-                  <SelectItem key={evaluation.id} value={evaluation.id.toString()}>
-                    {evaluation.name} ({evaluation.typeEvaluation})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="text-center py-4">Chargement des notes...</div>
-          ) : filteredGrades.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              {selectedEvaluation === "all" ? "Aucune note disponible" : "Aucune note pour cette évaluation"}
-            </div>
-          ) : viewMode === 'list' ? (
-            <div className="space-y-4">
-              {filteredGrades.map((grade, index) => {
-                const colors = [
-                  "bg-blue-500", "bg-green-500", "bg-purple-500", "bg-orange-500", 
-                  "bg-pink-500", "bg-indigo-500", "bg-teal-500", "bg-red-500", "bg-yellow-500"
-                ]
-                const colorIndex = index % colors.length
-                
-                return (
-                  <div key={index} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-3 h-3 rounded-full ${colors[colorIndex]}`} />
-                      <span className="font-medium text-base">{grade.subjectName}</span>
-                      <Badge variant="secondary" className="text-xs">
-                        {grade.evaluation.type}
-                      </Badge>
-                      {grade.comment && grade.comment !== "RAS" && (
-                        <Badge variant="outline" className="text-xs max-w-32 truncate" title={grade.comment}>
-                          {grade.comment}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Badge 
-                        variant={grade.noteValue >= 16 ? "default" : grade.noteValue >= 12 ? "secondary" : "destructive"}
-                        className="text-sm font-bold px-3 py-1"
-                      >
-                        {grade.noteValue}/20
-                      </Badge>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+          {!hasGrades ? (
+            <div className="text-center py-8 text-muted-foreground">Aucune note disponible pour le moment.</div>
+          ) : viewMode === "list" ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Matière</TableHead>
+                  {!evaluationId && <TableHead>Évaluation</TableHead>}
+                  <TableHead>Coef.</TableHead>
+                  <TableHead>Note</TableHead>
+                  <TableHead>Sur 20</TableHead>
+                  <TableHead className="hidden md:table-cell">Commentaire</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredGrades.map((grade) => {
+                  const on20 = toTwenty(grade.noteValue, grade.noteMaximale)
+                  return (
+                    <TableRow key={grade.gradeId}>
+                      <TableCell className="font-medium">{grade.subjectName}</TableCell>
+                      {!evaluationId && <TableCell>{evaluationLabel(grade.evaluation)}</TableCell>}
+                      <TableCell>{grade.coefficient}</TableCell>
+                      <TableCell>{formatRawGrade(grade.noteValue, grade.noteMaximale)}</TableCell>
+                      <TableCell>
+                        <Badge variant={gradeVariant(on20)}>{formatOn20(on20)}</Badge>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                        {grade.comment && grade.comment !== DEFAULT_COMMENT ? grade.comment : ""}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
           ) : (
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart 
-                  data={filteredGrades.map((grade, index) => ({
-                    name: grade.subjectName.length > 10 ? grade.subjectName.substring(0, 10) + '...' : grade.subjectName,
-                    note: grade.noteValue,
-                    fullName: grade.subjectName,
-                    fill: grade.noteValue >= 16 ? "#22c55e" : 
-                          grade.noteValue >= 12 ? "#3b82f6" : 
-                          grade.noteValue >= 10 ? "#f59e0b" : "#ef4444"
-                  }))}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis 
-                    dataKey="name" 
-                    angle={-45}
-                    textAnchor="end"
-                    height={80}
-                    fontSize={12}
-                    stroke="#6b7280"
-                  />
-                  <YAxis 
-                    domain={[0, 20]} 
-                    stroke="#6b7280"
-                  />
-                  <Tooltip 
+                <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 60 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.4} />
+                  <XAxis dataKey="name" angle={-35} textAnchor="end" interval={0} fontSize={12} stroke="currentColor" />
+                  <YAxis domain={[0, 20]} stroke="currentColor" fontSize={12} />
+                  <Tooltip
+                    formatter={(value: number) => [`${value}/20`, "Note"]}
+                    labelFormatter={(_label, payload) => payload?.[0]?.payload?.fullName ?? ""}
                     contentStyle={{
-                      backgroundColor: '#1f2937',
-                      border: '1px solid #374151',
-                      borderRadius: '6px',
-                      color: '#f9fafb'
+                      background: "var(--popover)",
+                      color: "var(--popover-foreground)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
                     }}
-                    labelStyle={{ color: '#f9fafb' }}
-                    formatter={(value: any, name: any, props: any) => [
-                      `${value}/20`, 
-                      props.payload.fullName
-                    ]}
                   />
-                  <Bar 
-                    dataKey="note" 
-                    radius={[4, 4, 0, 0]}
-                  >
-                    {filteredGrades.map((grade, index) => (
-                      <Cell 
-                        key={index} 
-                        fill={grade.noteValue >= 16 ? "#22c55e" : 
-                              grade.noteValue >= 12 ? "#3b82f6" : 
-                              grade.noteValue >= 10 ? "#f59e0b" : "#ef4444"}
-                      />
+                  <Bar dataKey="note" radius={[4, 4, 0, 0]}>
+                    {chartData.map((entry) => (
+                      <Cell key={entry.key} fill={gradeColor(entry.note)} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -290,41 +236,139 @@ export function StudentDashboard() {
           )}
         </CardContent>
       </Card>
-
-      {/* Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Télécharger Relevé de Notes</CardTitle>
-          <CardDescription>Sélectionnez une évaluation pour télécharger votre relevé</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">Évaluation</label>
-              <Select value={selectedEvaluation} onValueChange={setSelectedEvaluation}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une évaluation" />
-                </SelectTrigger>
-                <SelectContent>
-                  {evaluations.map((evaluation) => (
-                    <SelectItem key={evaluation.id} value={evaluation.id.toString()}>
-                      {evaluation.name} ({evaluation.typeEvaluation})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button 
-              className="w-full flex items-center space-x-2" 
-              onClick={downloadTranscript}
-              disabled={!selectedEvaluation}
-            >
-              <Download className="w-4 h-4" />
-              <span>Télécharger Relevé PDF</span>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
+}
+
+function TranscriptsSection() {
+  const { user, gradedEvaluations, loading } = useStudentData()
+  const [selectedEvaluation, setSelectedEvaluation] = useState("")
+  const [busy, setBusy] = useState<"pdf" | "excel" | null>(null)
+
+  useEffect(() => {
+    if (!selectedEvaluation && gradedEvaluations.length > 0) setSelectedEvaluation(String(gradedEvaluations[0].id))
+  }, [gradedEvaluations, selectedEvaluation])
+
+  const evaluationId = Number(selectedEvaluation)
+  const transcript = useTranscript(user?.id, evaluationId)
+  const evaluation: Evaluation | undefined = gradedEvaluations.find((e) => e.id === evaluationId)
+
+  const run = async (kind: "pdf" | "excel", action: () => Promise<void>) => {
+    setBusy(kind)
+    await runAction(action, "Téléchargement terminé", "Erreur lors du téléchargement")
+    setBusy(null)
+  }
+
+  if (loading) return <LoadingState />
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader title="Relevés et exports" description="Consultez et téléchargez vos relevés de notes" />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Relevé de notes (PDF)</CardTitle>
+            <CardDescription>Un relevé par évaluation, avec votre moyenne et votre rang</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {gradedEvaluations.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucune note n&apos;a encore été saisie : aucun relevé disponible.</p>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="transcript-evaluation">Évaluation</Label>
+                  <EvaluationSelect
+                    id="transcript-evaluation"
+                    evaluations={gradedEvaluations}
+                    value={selectedEvaluation}
+                    onChange={setSelectedEvaluation}
+                  />
+                </div>
+                <Button
+                  className="w-full"
+                  disabled={!evaluationId || busy !== null}
+                  onClick={() => user && run("pdf", () => studentApi.downloadTranscript(user.id, evaluationId))}
+                >
+                  {busy === "pdf" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                  Télécharger le relevé PDF
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Toutes mes notes (Excel)</CardTitle>
+            <CardDescription>Export de l&apos;ensemble de vos notes, toutes évaluations confondues</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={busy !== null}
+              onClick={() => user && run("excel", () => studentApi.exportGrades(user.id))}
+            >
+              {busy === "excel" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 mr-2" />}
+              Exporter mes notes
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {evaluationId > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Aperçu — {evaluationLabel(evaluation)}</CardTitle>
+            {transcript.data && (
+              <CardDescription>
+                Moyenne {formatOn20(transcript.data.average)} · rang {formatRank(transcript.data.ranking)} · moyenne de la
+                classe {formatOn20(transcript.data.ranking?.classAverage)}
+              </CardDescription>
+            )}
+          </CardHeader>
+          <CardContent>
+            {transcript.error ? (
+              <ErrorState message={transcript.error} onRetry={transcript.reload} />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Matière</TableHead>
+                    <TableHead>Coef.</TableHead>
+                    <TableHead>Note</TableHead>
+                    <TableHead>Sur 20</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transcript.loading || !transcript.data || transcript.data.grades.length === 0 ? (
+                    <TableStateRow colSpan={4} loading={transcript.loading} emptyLabel="Aucune note pour cette évaluation" />
+                  ) : (
+                    transcript.data.grades.map((grade) => {
+                      const on20 = toTwenty(grade.noteValue, grade.noteMaximale)
+                      return (
+                        <TableRow key={grade.id}>
+                          <TableCell className="font-medium">{grade.subjectName}</TableCell>
+                          <TableCell>{grade.coefficient}</TableCell>
+                          <TableCell>{formatRawGrade(grade.noteValue, grade.noteMaximale)}</TableCell>
+                          <TableCell>
+                            <Badge variant={gradeVariant(on20)}>{formatOn20(on20)}</Badge>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+export function StudentDashboard({ section }: { section: string }) {
+  return section === "transcripts" ? <TranscriptsSection /> : <GradesOverview />
 }

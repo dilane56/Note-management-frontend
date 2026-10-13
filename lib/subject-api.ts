@@ -1,58 +1,13 @@
-import { apiRequest } from './api'
-
-export interface Subject {
-  id: number
-  name: string
-  coefficient: number
-  noteMaximale: number
-  className: string
-  teachers: Teacher[]
-}
-
-export interface Teacher {
-  teacherFirstName: string
-  teacherLastName: string
-}
-
-export interface SubjectRequest {
-  name: string
-  coefficient: number
-  noteMaximale: number
-  classId: number
-}
+import { api } from "./api"
+import type { MessageResponse, Subject, SubjectPayload } from "./types"
 
 export const subjectApi = {
-  async getSubjects(token: string): Promise<Subject[]> {
-    return apiRequest('/api/subjects', {}, token)
-  },
-
-  async getSubjectById(id: number, token: string): Promise<Subject> {
-    return apiRequest(`/api/subjects/${id}`, {}, token)
-  },
-
-  async createSubject(data: SubjectRequest, token: string): Promise<Subject> {
-    return apiRequest('/api/subjects', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }, token)
-  },
-
-  async updateSubject(id: number, data: SubjectRequest, token: string): Promise<Subject> {
-    return apiRequest(`/api/subjects/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    }, token)
-  },
-
-  async deleteSubject(id: number, token: string): Promise<string> {
-    return apiRequest(`/api/subjects/${id}`, {
-      method: 'DELETE'
-    }, token)
-  },
-
-  async assignTeacher(teacherId: number, subjectId: number, token: string): Promise<Subject> {
-    return apiRequest(`/api/teachers/${teacherId}/assign-subject/${subjectId}`, {
-      method: 'PATCH'
-    }, token)
-  }
+  getSubjects: () => api.get<Subject[]>("/api/subjects"),
+  create: (data: SubjectPayload) => api.post<Subject>("/api/subjects", data),
+  update: (id: number, data: SubjectPayload) => api.put<Subject>(`/api/subjects/${id}`, data),
+  delete: (id: number) => api.delete<MessageResponse>(`/api/subjects/${id}`),
+  assignTeacher: (teacherId: number, subjectId: number) =>
+    api.patch<unknown>(`/api/teachers/${teacherId}/assign-subject/${subjectId}`),
+  updateCoefficient: (subjectId: number, coefficient: number) =>
+    api.patch<Subject>(`/api/subjects/${subjectId}/coefficient`, undefined, { coefficient }),
 }

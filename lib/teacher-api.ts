@@ -1,12 +1,9 @@
-import { api } from './api';
-import { ClassResponseDTO } from './class-api';
-import { SubjectResponseDTO } from './subject-api';
+import { api } from "./api"
+import type { SchoolClass, Subject, TeacherDashboard } from "./types"
 
-
-export const getTeacherClasses = async (teacherId: number): Promise<ClassResponseDTO[]> => {
-  return api.get(`/api/teachers/${teacherId}/classes`);
-};
-
-export const getTeacherSubjects = async (teacherId: number): Promise<SubjectResponseDTO[]> => {
-    return api.get(`/api/teachers/${teacherId}/subjects`);
-};
+export const teacherApi = {
+  getClasses: (teacherId: number) => api.get<SchoolClass[]>(`/api/teachers/${teacherId}/classes`),
+  getSubjects: (teacherId: number) => api.get<Subject[]>(`/api/teachers/${teacherId}/subjects`),
+  getDashboard: (teacherId: number) =>
+    api.get<TeacherDashboard>(`/api/statistics/teacher/${teacherId}/dashboard`),
+}

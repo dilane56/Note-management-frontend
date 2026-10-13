@@ -1,112 +1,85 @@
 "use client"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { useAuth } from "@/contexts/auth-context"
+
+import type { LucideIcon } from "lucide-react"
 import {
-  Users,
-  BookOpen,
-  FileText,
-  Settings,
-  TrendingUp,
-  GraduationCap,
   BarChart3,
-  ClipboardList,
-  Calendar,
-  Home,
-  LogOut,
+  BookOpen,
   Building2,
-  School,
   CheckSquare,
+  ClipboardList,
+  FileDown,
+  FileText,
+  GraduationCap,
+  Home,
+  School,
+  TrendingUp,
+  Users,
 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import type { UserRole } from "@/contexts/auth-context"
+import { cn } from "@/lib/utils"
+
+export interface NavItem {
+  id: string
+  label: string
+  icon: LucideIcon
+}
+
+export const NAV_ITEMS: Record<UserRole, NavItem[]> = {
+  admin: [
+    { id: "dashboard", label: "Tableau de bord", icon: Home },
+    { id: "users", label: "Utilisateurs", icon: Users },
+    { id: "filieres", label: "Filières", icon: Building2 },
+    { id: "classes", label: "Classes", icon: School },
+    { id: "subjects", label: "Matières", icon: BookOpen },
+    { id: "evaluations", label: "Évaluations", icon: CheckSquare },
+    { id: "transcripts", label: "Relevés de notes", icon: FileText },
+    { id: "reports", label: "Exports Excel", icon: FileDown },
+    { id: "statistics", label: "Statistiques", icon: TrendingUp },
+  ],
+  teacher: [
+    { id: "dashboard", label: "Tableau de bord", icon: Home },
+    { id: "grades", label: "Saisie des notes", icon: ClipboardList },
+    { id: "my-subjects", label: "Mes matières", icon: BookOpen },
+    { id: "my-classes", label: "Mes classes", icon: GraduationCap },
+  ],
+  student: [
+    { id: "dashboard", label: "Mes notes", icon: BarChart3 },
+    { id: "transcripts", label: "Relevés et exports", icon: FileText },
+  ],
+}
 
 interface NavigationProps {
+  role: UserRole
   activeSection: string
   onSectionChange: (section: string) => void
 }
 
-export function Navigation({ activeSection, onSectionChange }: NavigationProps) {
-  const { user, logout } = useAuth()
-
-  const getNavigationItems = () => {
-    switch (user?.role) {
-      case "admin":
-        return [
-          { id: "dashboard", label: "Tableau de Bord", icon: Home },
-          { id: "users", label: "Gestion des Utilisateurs", icon: Users },
-          { id: "filieres", label: "Gestion des Filières", icon: Building2 },
-          { id: "classes", label: "Gestion des Classes", icon: School },
-          { id: "subjects", label: "Gestion des Matières", icon: BookOpen },
-          { id: "evaluations", label: "Gestion des Évaluations", icon: CheckSquare },
-          { id: "transcripts", label: "Gestion des Relevés", icon: FileText },
-          { id: "reports", label: "Rapports et Exports", icon: FileText },
-          { id: "statistics", label: "Statistiques", icon: TrendingUp },
-          { id: "settings", label: "Paramètres Système", icon: Settings },
-        ]
-      case "teacher":
-        return [
-          { id: "dashboard", label: "Tableau de Bord", icon: Home },
-          { id: "grades", label: "Saisie des Notes", icon: ClipboardList },
-          { id: "my-subjects", label: "Mes Matières", icon: BookOpen },
-          { id: "my-classes", label: "Mes Classes", icon: GraduationCap },
-        ]
-      case "student":
-        return [
-          { id: "dashboard", label: "Tableau de Bord", icon: Home },
-          { id: "grades", label: "Mes Notes", icon: BarChart3 },
-          { id: "reports", label: "Bulletins", icon: FileText },
-          { id: "schedule", label: "Emploi du Temps", icon: Calendar },
-        ]
-      default:
-        return []
-    }
-  }
-
-  const navigationItems = getNavigationItems()
+/** Barre latérale sur grand écran, barre d'onglets défilante sur mobile. */
+export function Navigation({ role, activeSection, onSectionChange }: NavigationProps) {
+  const items = NAV_ITEMS[role]
 
   return (
-    <div className="w-64 bg-card border-r border-border h-screen flex flex-col">
-      {/* Header */}
-      <div className="p-6 border-b border-border">
-        <h2 className="text-xl font-bold text-foreground">Notes Manager</h2>
-        <div className="mt-2">
-          <p className="text-sm text-muted-foreground">{user?.name}</p>
-          <Badge variant="outline" className="mt-1">
-            {user?.role === "admin" ? "Administrateur" : user?.role === "teacher" ? "Enseignant" : "Étudiant"}
-          </Badge>
-        </div>
-      </div>
-
-      {/* Navigation Items */}
-      <nav className="flex-1 p-4">
-        <div className="space-y-2">
-          {navigationItems.map((item) => {
-            const Icon = item.icon
-            return (
+    <nav aria-label="Navigation principale" className="md:w-60 md:shrink-0 md:border-r md:bg-card md:min-h-[calc(100vh-73px)]">
+      <ul className="flex gap-1 overflow-x-auto border-b bg-card px-2 py-2 md:flex-col md:overflow-visible md:border-b-0 md:p-4 md:sticky md:top-[73px]">
+        {items.map((item) => {
+          const Icon = item.icon
+          const active = activeSection === item.id
+          return (
+            <li key={item.id} className="shrink-0">
               <Button
-                key={item.id}
-                variant={activeSection === item.id ? "default" : "ghost"}
-                className="w-full justify-start"
+                variant={active ? "default" : "ghost"}
+                className={cn("w-full justify-start", !active && "text-muted-foreground")}
+                aria-current={active ? "page" : undefined}
                 onClick={() => onSectionChange(item.id)}
               >
-                <Icon className="w-4 h-4 mr-3" />
+                <Icon className="w-4 h-4 mr-2" aria-hidden />
                 {item.label}
               </Button>
-            )
-          })}
-        </div>
-      </nav>
-
-      {/* Logout */}
-      <div className="p-4 border-t border-border">
-        <Button
-          variant="ghost"
-          className="w-full justify-start text-muted-foreground hover:text-foreground"
-          onClick={logout}
-        >
-          <LogOut className="w-4 h-4 mr-3" />
-          Déconnexion
-        </Button>
-      </div>
-    </div>
+            </li>
+          )
+        })}
+      </ul>
+    </nav>
   )
 }

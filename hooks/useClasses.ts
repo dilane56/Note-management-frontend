@@ -1,87 +1,34 @@
-import { useState, useEffect } from 'react'
-import { useAuth } from '@/contexts/auth-context'
-import { classApi, type Class, type ClassRequest } from '@/lib/class-api'
-import { filiereApi, type Filiere } from '@/lib/filiere-api'
-import { toast } from 'sonner'
+import { classApi } from "@/lib/class-api"
+import { filiereApi } from "@/lib/filiere-api"
+import type { ClassPayload, Filiere, SchoolClass } from "@/lib/types"
+import { runAction, useAsync } from "./useAsync"
 
 export const useClasses = () => {
-  const { token } = useAuth()
-  const [classes, setClasses] = useState<Class[]>([])
-  const [filieres, setFilieres] = useState<Filiere[]>([])
-  const [loading, setLoading] = useState(false)
+  const { data, loading, error, reload } = useAsync<{ classes: SchoolClass[]; filieres: Filiere[] }>(
+    async () => {
+      const [classes, filieres] = await Promise.all([classApi.getClasses(), filiereApi.getFilieres()])
+      return { classes, filieres }
+    },
+    [],
+    { classes: [], filieres: [] },
+  )
 
-  const fetchData = async () => {
-    if (!token) return
-    
-    setLoading(true)
-    try {
-      const [classesData, filieresData] = await Promise.all([
-        classApi.getClasses(token),
-        filiereApi.getFilieres(token)
-      ])
-      setClasses(classesData)
-      setFilieres(filieresData)
-    } catch (error) {
-      toast.error('Erreur lors du chargement des données')
-    } finally {
-      setLoading(false)
-    }
+  const mutate = async (action: () => Promise<unknown>, success: string, failure: string) => {
+    const { ok } = await runAction(action, success, failure)
+    if (ok) await reload()
+    return ok
   }
-
-  const createClass = async (data: ClassRequest) => {
-    if (!token) return false
-
-    try {
-      const newClass = await classApi.createClass(data, token)
-      setClasses(prev => [...prev, newClass])
-      toast.success('Classe créée avec succès')
-      return true
-    } catch (error) {
-      toast.error('Erreur lors de la création')
-      return false
-    }
-  }
-
-  const updateClass = async (id: number, data: ClassRequest) => {
-    if (!token) return false
-
-    try {
-      const updatedClass = await classApi.updateClass(id, data, token)
-      setClasses(prev => prev.map(c => c.id === id ? updatedClass : c))
-      toast.success('Classe modifiée avec succès')
-      return true
-    } catch (error) {
-      toast.error('Erreur lors de la modification')
-      return false
-    }
-  }
-
-  const deleteClass = async (id: number) => {
-    if (!token) return false
-
-    try {
-      await classApi.deleteClass(id, token)
-      setClasses(prev => prev.filter(c => c.id !== id))
-      toast.success('Classe supprimée avec succès')
-      return true
-    } catch (error) {
-      toast.error('Erreur lors de la suppression')
-      return false
-    }
-  }
-
-  useEffect(() => {
-    fetchData()
-  }, [token])
 
   return {
-    classes,
-    filieres,
+    classes: data.classes,
+    filieres: data.filieres,
     loading,
-    createClass,
-    updateClass,
-    deleteClass,
-    refetch: fetchData,
-    fetchClasses: fetchData
+    error,
+    reload,
+    createClass: (payload: ClassPayload) =>
+      mutate(() => classApi.create(payload), "Classe créée", "Erreur lors de la création"),
+    updateClass: (id: number, payload: ClassPayload) =>
+      mutate(() => classApi.update(id, payload), "Classe modifiée", "Erreur lors de la modification"),
+    deleteClass: (id: number) => mutate(() => classApi.delete(id), "Classe supprimée", "Erreur lors de la suppression"),
   }
 }

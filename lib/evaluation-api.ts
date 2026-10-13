@@ -1,12 +1,9 @@
-import { api } from './api';
-import { EvaluationResponseDTO } from './api';
+import { api } from "./api"
+import type { Evaluation, EvaluationPayload, MessageResponse } from "./types"
 
-// Récupérer toutes les évaluations
-export const getAllEvaluations = async (): Promise<EvaluationResponseDTO[]> => {
-  return api.get('/api/evaluations');
-};
-
-// Récupérer une évaluation par ID
-export const getEvaluation = async (id: number): Promise<EvaluationResponseDTO> => {
-  return api.get(`/api/evaluations/${id}`);
-};
+export const evaluationApi = {
+  getEvaluations: () => api.get<Evaluation[]>("/api/evaluations"),
+  create: (data: EvaluationPayload) => api.post<Evaluation>("/api/evaluations", data),
+  update: (id: number, data: EvaluationPayload) => api.put<Evaluation>(`/api/evaluations/${id}`, data),
+  delete: (id: number) => api.delete<MessageResponse>(`/api/evaluations/${id}`),
+}

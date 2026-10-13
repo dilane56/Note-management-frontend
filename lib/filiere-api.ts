@@ -1,40 +1,9 @@
-import { apiRequest } from './api'
-
-export interface Filiere {
-  id: number
-  name: string
-}
-
-export interface FiliereRequest {
-  name: string
-}
+import { api } from "./api"
+import type { Filiere, MessageResponse } from "./types"
 
 export const filiereApi = {
-  async getFilieres(token: string): Promise<Filiere[]> {
-    return apiRequest('/api/filieres', {}, token)
-  },
-
-  async getFiliereById(id: number, token: string): Promise<Filiere> {
-    return apiRequest(`/api/filieres/${id}`, {}, token)
-  },
-
-  async createFiliere(data: FiliereRequest, token: string): Promise<Filiere> {
-    return apiRequest('/api/filieres', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    }, token)
-  },
-
-  async updateFiliere(id: number, data: FiliereRequest, token: string): Promise<Filiere> {
-    return apiRequest(`/api/filieres/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    }, token)
-  },
-
-  async deleteFiliere(id: number, token: string): Promise<string> {
-    return apiRequest(`/api/filieres/${id}`, {
-      method: 'DELETE'
-    }, token)
-  }
+  getFilieres: () => api.get<Filiere[]>("/api/filieres"),
+  create: (data: { name: string }) => api.post<Filiere>("/api/filieres", data),
+  update: (id: number, data: { name: string }) => api.put<Filiere>(`/api/filieres/${id}`, data),
+  delete: (id: number) => api.delete<MessageResponse>(`/api/filieres/${id}`),
 }
